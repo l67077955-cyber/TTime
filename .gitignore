@@ -57,3 +57,6 @@ hs_err_pid*
 /.mvn/
 node_modules/
 /.history/
+
+# CI 构建时复制的 VC++ 运行库 DLL
+build/vcredist/

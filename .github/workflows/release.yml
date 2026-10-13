@@ -52,6 +52,20 @@ jobs:
           npm run modules-update
           npm run build
 
+      # 复制 VC++ 运行库 DLL，由 build/afterPack.js 内置到原生模块目录（应用本地部署）
+      # 用户无需安装或更新系统 VC++ 运行库
+      - name: Collect VC++ runtime DLLs
+        shell: pwsh
+        run: |
+          $vs = & "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe" -latest -property installationPath
+          $crt = Get-ChildItem "$vs\VC\Redist\MSVC" -Directory |
+            Where-Object { Test-Path "$($_.FullName)\x64\Microsoft.VC143.CRT" } |
+            Sort-Object Name -Descending | Select-Object -First 1
+          if (-not $crt) { throw '未找到 Microsoft.VC143.CRT 目录' }
+          New-Item -ItemType Directory -Force build/vcredist | Out-Null
+          Copy-Item "$($crt.FullName)\x64\Microsoft.VC143.CRT\*.dll" build/vcredist/
+          Get-ChildItem build/vcredist
+
       - name: Package
         run: npx electron-builder --win --publish never
 

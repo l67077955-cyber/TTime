@@ -17,6 +17,8 @@ asarUnpack:
 #asar:
 #  false
 afterSign: build/notarize.js
+# Windows 下将 VC++ 运行库 DLL 内置到原生模块目录 无需用户安装/更新系统运行库
+afterPack: build/afterPack.js
 win:
   executableName: TTime
 nsis:

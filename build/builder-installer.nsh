@@ -16,26 +16,8 @@
 
 ; 安装时触发
 !macro customInstall
-  ; 检测 VC++ 运行库(VC_redist.x64) 是否已安装
-  ; VC_redist.x64.exe 下载来源：https://aka.ms/vs/17/release/VC_redist.x64.exe
-  ; 目前内置 VC_redist.x64.exe 的版本号为 14.34
-  ; 读取微软官方的运行库注册表标记 Installed / Minor，任意 >= 14.34 的版本都视为已安装
-  ; 不再按具体版本号逐个判断（旧逻辑只认 14.34 ~ 14.37，新版本会被误判为未安装）
-  SetRegView 64
-  ReadRegDWORD $1 HKLM "SOFTWARE\Microsoft\VisualStudio\14.0\VC\Runtimes\x64" "Installed"
-  ReadRegDWORD $2 HKLM "SOFTWARE\Microsoft\VisualStudio\14.0\VC\Runtimes\x64" "Minor"
-  SetRegView lastused
-  StrCpy $0 ""
-  ${If} $1 == 1
-  ${AndIf} $2 >= 34
-      StrCpy $0 "installed"
-  ${EndIf}
-  ${If} $0 == ""
-      ; 不存在则提示安装
-      MessageBox MB_OK "检测到电脑缺少 VC++ 运行库(DLL 依赖)，点击确认后将会弹出安装界面"
-      File /oname=$PLUGINSDIR\VC_redist.x64.exe "${BUILD_RESOURCES_DIR}\VC_redist.x64.exe"
-      ExecWait '"$PLUGINSDIR\VC_redist.x64.exe"'
-  ${EndIf}
+  ; VC++ 运行库 DLL 已内置在应用目录中（见 build/afterPack.js）
+  ; 不再检测或安装系统 VC++ 运行库，不会修改用户电脑上已有的运行库版本
 
 ; 安装时删除开机自启配置 防止如果用户前一个版本是开机自启的
 ; 但是覆盖安装新版本时选择不开机自启 最后开启自启逻辑还在 导致安装时即使设置的关闭开机自启 但应用启动时还是开启自启状态的
