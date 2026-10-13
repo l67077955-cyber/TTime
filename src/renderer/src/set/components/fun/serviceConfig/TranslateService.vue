@@ -91,7 +91,9 @@
               placeholder='https://api.openai.com'
               spellcheck='false'
             />
-            <span class='form-switch-span'> 留空默认：https://api.openai.com </span>
+            <span class='form-switch-span'>
+              留空默认：https://api.openai.com，支持填写 .../v1 或完整的 .../chat/completions 地址
+            </span>
           </el-form-item>
           <el-form-item
             v-if='

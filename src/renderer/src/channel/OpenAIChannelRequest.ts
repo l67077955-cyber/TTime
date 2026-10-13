@@ -136,6 +136,47 @@ export class QuoteProcessor {
   }
 }
 
+/**
+ * 构建 Chat Completions 请求地址
+ * 兼容以下几种填写方式：
+ * https://api.openai.com                     -> https://api.openai.com/v1/chat/completions
+ * https://api.deepseek.com/v1                -> https://api.deepseek.com/v1/chat/completions
+ * https://ark.cn-beijing.volces.com/api/v3   -> https://ark.cn-beijing.volces.com/api/v3/chat/completions
+ * https://xxx.com/v1/chat/completions        -> 原样使用
+ *
+ * @param requestUrl 请求地址
+ */
+export const buildChatCompletionsUrl = (requestUrl: string): string => {
+  let url = isNull(requestUrl) ? OpenAIModelEnum.REQUEST_URL : requestUrl.trim()
+  url = url.replace(/\/+$/, '')
+  if (url.endsWith('/chat/completions')) {
+    return url
+  }
+  if (/\/v\d+[a-z]*$/i.test(url)) {
+    return url + '/chat/completions'
+  }
+  return url + '/v1/chat/completions'
+}
+
+/**
+ * 从错误响应中解析错误信息
+ *
+ * @param body 响应内容
+ */
+const parseErrorMessage = (body: string): string => {
+  try {
+    const json = JSON.parse(body)
+    return json?.error?.message ?? json?.message ?? json?.msg ?? body
+  } catch (e) {
+    return body
+  }
+}
+
+/**
+ * 用于终止 fetchEventSource 重试的异常
+ */
+class FatalError extends Error {}
+
 class OpenAIChannelRequest {
   static buildOpenAIRequest(
     info,
@@ -174,11 +215,8 @@ class OpenAIChannelRequest {
         // 一个介于 0 和 1 之间的值 可以为0.1这样的小数
         // 每次提交相同的内容时 按照 0 - 1 的概率返回不同的答案
         // 我们这里默认为 0 ，重复提交相同的内容返回同样的结果
+        // 不再限制 max_tokens：思考模型的思考内容也会计入 max_tokens，限制过小时会导致没有任何翻译输出
         temperature: 0,
-        max_tokens: 1000,
-        top_p: 1,
-        frequency_penalty: 1,
-        presence_penalty: 1,
         messages: [
           { role: 'system', content: rolePrompt },
           { role: 'user', content: commandPrompt },
@@ -205,102 +243,152 @@ class OpenAIChannelRequest {
         })
       )
     )
-    if (isNull(info.requestUrl)) {
-      info.requestUrl = OpenAIModelEnum.REQUEST_URL
-    }
     let text = ''
-    await fetchEventSource(info.requestUrl + '/v1/chat/completions', {
-      method: 'POST',
-      body: JSON.stringify(data),
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${info.appKey}`
-      },
-      async onopen(response) {
-        if (
-          response.ok &&
-          response.headers.get('content-type').indexOf(EventStreamContentType) !== -1
-        ) {
-          return // everything's good
-        } else {
+    // 是否收到了思考内容
+    let hasReasoning = false
+    // 是否已经回调过错误信息
+    let errorStatus = false
+    const errorCallback = (error): void => {
+      if (errorStatus) {
+        return
+      }
+      errorStatus = true
+      window.api['agentApiTranslateCallback'](
+        R.errorD(
+          new AgentTranslateCallbackVo(info, {
+            code: OpenAIStatusEnum.ERROR,
+            error: error
+          })
+        )
+      )
+    }
+    try {
+      await fetchEventSource(buildChatCompletionsUrl(info.requestUrl), {
+        method: 'POST',
+        body: JSON.stringify(data),
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${info.appKey}`
+        },
+        openWhenHidden: true,
+        async onopen(response) {
+          const contentType = response.headers.get('content-type') ?? ''
+          if (response.ok && contentType.indexOf(EventStreamContentType) !== -1) {
+            return // everything's good
+          }
+          const body = await response.text().catch(() => '')
+          // 部分服务即使请求了流式输出也会直接返回完整的 JSON 结果
+          if (response.ok) {
+            try {
+              const content = JSON.parse(body)?.choices?.[0]?.message?.content
+              if (isNotNull(content)) {
+                text = quoteProcessor.processText(content)
+                window.api['agentApiTranslateCallback'](
+                  R.okD(
+                    new AgentTranslateCallbackVo(info, {
+                      code: OpenAIStatusEnum.ING,
+                      content: text
+                    })
+                  )
+                )
+                window.api['agentApiTranslateCallback'](
+                  R.okD(new AgentTranslateCallbackVo(info, { code: OpenAIStatusEnum.END }))
+                )
+                errorStatus = true
+                throw new FatalError()
+              }
+            } catch (e) {
+              if (e instanceof FatalError) {
+                throw e
+              }
+            }
+          }
           window.api.logInfoEvent('[OpenAI翻译事件] - error 连接失败 :', {
             status: response.status,
-            statusText: response.statusText
+            statusText: response.statusText,
+            body
           })
-          window.api['agentApiTranslateCallback'](
-            R.errorD(
-              new AgentTranslateCallbackVo(info, {
-                code: OpenAIStatusEnum.ERROR,
-                error: '连接失败'
-              })
-            )
-          )
-        }
-      },
-      onmessage(msg) {
-        // console.log('value = ', msg.data);
-        const value = msg.data
-        try {
-          const dataArray = value.split('data: ')
-          dataArray.forEach((data) => {
-            data = data.trim().replace(/data:/g, '')
-            if (isNull(data) || data === '[DONE]') {
-              return
-            }
-            data = JSON.parse(data)
-            if (isNotNull(data['error'])) {
+          let msg = parseErrorMessage(body)
+          if (isNull(msg)) {
+            msg = `连接失败 [${response.status}] ${response.statusText}`
+          } else if (!response.ok) {
+            msg = `[${response.status}] ${msg}`
+          }
+          errorCallback(msg)
+          throw new FatalError(msg)
+        },
+        onmessage(msg) {
+          const value = msg.data
+          try {
+            const dataArray = value.split('data: ')
+            dataArray.forEach((data) => {
+              data = data.trim().replace(/data:/g, '')
+              if (isNull(data) || data === '[DONE]') {
+                return
+              }
+              data = JSON.parse(data)
+              if (isNotNull(data['error'])) {
+                errorCallback(data)
+                return
+              }
+              const delta = data['choices']?.[0]?.['delta']
+              if (isNull(delta)) {
+                return
+              }
+              if (isNotNull(delta['reasoning_content']) || isNotNull(delta['reasoning'])) {
+                hasReasoning = true
+              }
+              let content = delta['content']
+              if (isNull(content)) {
+                return
+              }
+              content = quoteProcessor.processText(content)
+              text += content
               window.api['agentApiTranslateCallback'](
-                R.errorD(
+                R.okD(
                   new AgentTranslateCallbackVo(info, {
-                    code: OpenAIStatusEnum.ERROR,
-                    error: data
+                    code: OpenAIStatusEnum.ING,
+                    content: content
                   })
                 )
               )
-              return
-            }
-            let content = data['choices'][0]['delta']['content']
-            if (isNull(content)) {
-              return
-            }
-            content = quoteProcessor.processText(content)
-            text += content
-            window.api['agentApiTranslateCallback'](
-              R.okD(
-                new AgentTranslateCallbackVo(info, {
-                  code: OpenAIStatusEnum.ING,
-                  content: content
-                })
-              )
+            })
+          } catch (e) {
+            window.api.logErrorEvent('[OpenAI翻译事件] - parse error : ', text, msg)
+          }
+        },
+        onclose() {
+          window.api.logInfoEvent('[OpenAI翻译事件] - 响应报文 : ', text)
+          if (errorStatus) {
+            return
+          }
+          if (isNull(text.trim())) {
+            errorCallback(
+              hasReasoning
+                ? '模型只返回了思考内容，没有返回翻译结果，请检查思考参数 / 额外参数设置'
+                : '模型没有返回任何内容，请检查模型名称、请求地址是否正确'
             )
-          })
-        } catch (e) {
-          window.api.logErrorEvent('[OpenAI翻译事件] - parse error : ', text, msg)
+            return
+          }
+          window.api['agentApiTranslateCallback'](
+            R.okD(
+              new AgentTranslateCallbackVo(info, {
+                code: OpenAIStatusEnum.END
+              })
+            )
+          )
+        },
+        onerror(err) {
+          window.api.logInfoEvent('[OpenAI翻译事件] - error {}', err)
+          // errorStatus 已为 true 时 errorCallback 不会重复回调
+          errorCallback(err instanceof FatalError ? err.message : String(err))
+          // 抛出异常 不再进行重试
+          throw err
         }
-      },
-      onclose() {
-        window.api['agentApiTranslateCallback'](
-          R.okD(
-            new AgentTranslateCallbackVo(info, {
-              code: OpenAIStatusEnum.END
-            })
-          )
-        )
-        window.api.logInfoEvent('[OpenAI翻译事件] - 响应报文 : ', text)
-      },
-      onerror(err) {
-        window.api.logInfoEvent('[OpenAI翻译事件] - error {}', err)
-        window.api['agentApiTranslateCallback'](
-          R.errorD(
-            new AgentTranslateCallbackVo(info, {
-              code: OpenAIStatusEnum.ERROR,
-              error: err
-            })
-          )
-        )
-        throw err
-      }
-    })
+      })
+    } catch (e) {
+      // 错误信息已在上方回调处理
+    }
   }
 
   /**
@@ -311,12 +399,10 @@ class OpenAIChannelRequest {
   static openaiCheck = (info): void => {
     const isCheckRequest = true
     const { data } = OpenAIChannelRequest.buildOpenAIRequest(info, isCheckRequest)
-    if (isNull(info.requestUrl)) {
-      info.requestUrl = OpenAIModelEnum.REQUEST_URL
-    }
     const requestInfo = {
-      baseURL: info.requestUrl,
-      url: '/v1/chat/completions',
+      url: buildChatCompletionsUrl(info.requestUrl),
+      // 思考模型响应较慢 适当放宽超时时间
+      timeout: 60000,
       method: HttpMethodType.POST,
       data,
       headers: {
