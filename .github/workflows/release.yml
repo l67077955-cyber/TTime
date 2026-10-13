@@ -15,7 +15,8 @@ permissions:
 
 jobs:
   release-windows:
-    runs-on: windows-latest
+    # windows-latest 已升级到 Visual Studio 2026，项目使用的 node-gyp 8.x 无法识别，导致原生模块编译失败
+    runs-on: windows-2022
     steps:
       - name: Checkout
         uses: actions/checkout@v4
