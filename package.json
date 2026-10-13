@@ -40,7 +40,7 @@
     "node-screenshots": "^0.1.1",
     "onnxruntime-node": "^1.13.1",
     "opencv.js": "^1.2.1",
-    "sqlite3": "^5.1.6",
+    "sqlite3": "5.1.6",
     "tencentcloud-sdk-nodejs-ocr": "^4.0.632",
     "tencentcloud-sdk-nodejs-tmt": "^4.0.589",
     "tslib": "^2.5.0",
@@ -71,5 +71,8 @@
     "vue": "^3.2.45",
     "vue-router": "^4.1.6",
     "vuedraggable": "^4.1.0"
+  },
+  "overrides": {
+    "node-gyp": "^10.3.0"
   }
 }
