@@ -11,7 +11,11 @@ export default {
     // 思考强度 为空时不传递 reasoning_effort 参数
     reasoningEffort: '',
     // 额外请求参数(JSON) 会合并到请求体中 用于设置各服务商特有参数
-    extraParams: ''
+    extraParams: '',
+    // 自定义系统提示词 为空时使用内置提示词
+    systemPrompt: '',
+    // 自定义用户提示词 支持变量 {{from}} {{to}} {{text}} 为空时使用内置提示词
+    userPrompt: ''
   },
   // 翻译语言
   languageList: [

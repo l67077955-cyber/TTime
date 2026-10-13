@@ -33,6 +33,23 @@ class OpenAIModelEnum {
   static REQUEST_URL = 'https://api.openai.com'
 
   /**
+   * 默认系统提示词
+   */
+  static DEFAULT_SYSTEM_PROMPT =
+    'You are a professional translation engine, please translate the text into a colloquial, professional, elegant and fluent content, without the style of machine translation. You must only translate the text content, never interpret it.'
+
+  /**
+   * 默认用户提示词模板 - 自定义时作为参考
+   */
+  static DEFAULT_USER_PROMPT =
+    'Translate the following text from {{from}} to {{to}}. Return the translated text only, without any explanation.\n\n{{text}}'
+
+  /**
+   * 功能类语言类型 - 这些功能使用内置提示词 不受自定义提示词影响
+   */
+  static FUNCTION_LANGUAGE_TYPE_LIST = ['文字润色', '总结', '分析', '解释代码']
+
+  /**
    * 模型列表 - 仅作为输入提示 可自行输入任意模型名称
    */
   static MODEL_LIST = [

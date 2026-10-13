@@ -185,8 +185,7 @@ class OpenAIChannelRequest {
     const languageType = info.languageType
     const languageResultType = info.languageResultType
     const quoteProcessor = new QuoteProcessor()
-    let rolePrompt =
-      'You are a professional translation engine, please translate the text into a colloquial, professional, elegant and fluent content, without the style of machine translation. You must only translate the text content, never interpret it.'
+    let rolePrompt = OpenAIModelEnum.DEFAULT_SYSTEM_PROMPT
     let commandPrompt = `Translate from ${languageType} to ${languageResultType}. Return translated text only. Only translate the text between ${quoteProcessor.quoteStart} and ${quoteProcessor.quoteEnd}.`
     let contentPrompt = `${quoteProcessor.quoteStart}${info.translateContent}${quoteProcessor.quoteEnd}`
     if (languageResultType === '文字润色') {
@@ -208,6 +207,30 @@ class OpenAIChannelRequest {
       commandPrompt = `explain the provided code, regex or script in the most concise language and must use ${languageType} language! You may use Markdown. If the content is not code, return an error message. If the code has obvious errors, point them out.`
       contentPrompt = '```\n' + info.translateContent + '\n```'
     }
+    let messages = [
+      { role: 'system', content: rolePrompt },
+      { role: 'user', content: commandPrompt },
+      { role: 'user', content: contentPrompt }
+    ]
+    // 自定义提示词 - 仅作用于翻译 润色 / 总结 / 分析 / 解释代码 仍使用内置提示词
+    if (!OpenAIModelEnum.FUNCTION_LANGUAGE_TYPE_LIST.includes(languageResultType)) {
+      const systemPrompt = isNull(info.systemPrompt?.trim())
+        ? rolePrompt
+        : OpenAIChannelRequest.fillPromptVariables(info.systemPrompt, info)
+      if (isNull(info.userPrompt?.trim())) {
+        messages[0].content = systemPrompt
+      } else {
+        let userPrompt = OpenAIChannelRequest.fillPromptVariables(info.userPrompt, info)
+        // 未使用 {{text}} 变量时 将待翻译内容追加到末尾
+        if (info.userPrompt.indexOf('{{text}}') === -1) {
+          userPrompt += '\n\n' + info.translateContent
+        }
+        messages = [
+          { role: 'system', content: systemPrompt },
+          { role: 'user', content: userPrompt }
+        ]
+      }
+    }
     return {
       data: {
         model: info.model,
@@ -217,16 +240,26 @@ class OpenAIChannelRequest {
         // 我们这里默认为 0 ，重复提交相同的内容返回同样的结果
         // 不再限制 max_tokens：思考模型的思考内容也会计入 max_tokens，限制过小时会导致没有任何翻译输出
         temperature: 0,
-        messages: [
-          { role: 'system', content: rolePrompt },
-          { role: 'user', content: commandPrompt },
-          { role: 'user', content: contentPrompt }
-        ],
+        messages,
         stream: !isCheckRequest,
         ...OpenAIChannelRequest.buildExtraRequestParams(info)
       },
       quoteProcessor
     }
+  }
+
+  /**
+   * 替换提示词变量
+   * {{from}} 源语言 / {{to}} 目标语言 / {{text}} 待翻译内容
+   *
+   * @param prompt 提示词
+   * @param info   翻译信息
+   */
+  static fillPromptVariables(prompt: string, info): string {
+    return prompt
+      .replace(/\{\{from\}\}/g, info.languageType)
+      .replace(/\{\{to\}\}/g, info.languageResultType)
+      .replace(/\{\{text\}\}/g, () => info.translateContent)
   }
 
   /**

@@ -161,6 +161,50 @@
               </template>
             </el-dropdown>
           </el-form-item>
+          <el-form-item
+            v-if='translateServiceThis.type === TranslateServiceEnum.OPEN_AI'
+            label='系统提示词'
+          >
+            <el-input
+              v-model='translateServiceThis.systemPrompt'
+              type='textarea'
+              :autosize='{ minRows: 2, maxRows: 10 }'
+              :placeholder='"留空使用内置提示词：" + OpenAIModelEnum.DEFAULT_SYSTEM_PROMPT'
+              spellcheck='false'
+              @change='openAIAdvancedInfoChange'
+            />
+            <el-button
+              size='small'
+              style='margin-top: 5px'
+              @click='openAIPromptFillDefault("systemPrompt", OpenAIModelEnum.DEFAULT_SYSTEM_PROMPT)'
+            >
+              填入默认提示词
+            </el-button>
+          </el-form-item>
+          <el-form-item
+            v-if='translateServiceThis.type === TranslateServiceEnum.OPEN_AI'
+            label='用户提示词'
+          >
+            <el-input
+              v-model='translateServiceThis.userPrompt'
+              type='textarea'
+              :autosize='{ minRows: 2, maxRows: 10 }'
+              :placeholder='"留空使用内置提示词，示例：" + OpenAIModelEnum.DEFAULT_USER_PROMPT'
+              spellcheck='false'
+              @change='openAIAdvancedInfoChange'
+            />
+            <el-button
+              size='small'
+              style='margin-top: 5px'
+              @click='openAIPromptFillDefault("userPrompt", OpenAIModelEnum.DEFAULT_USER_PROMPT)'
+            >
+              填入示例模板
+            </el-button>
+            <span class='form-switch-span'>
+              支持变量：{{ '{' + '{from}' + '}' }} 源语言、{{ '{' + '{to}' + '}' }} 目标语言、{{ '{' + '{text}' + '}' }} 待翻译内容（未使用时自动追加到末尾）。
+              提示词修改后自动保存，仅作用于翻译，润色 / 总结 / 分析 / 解释代码仍使用内置提示词
+            </span>
+          </el-form-item>
 
           <el-form-item
             v-if='
@@ -322,6 +366,20 @@ const openAIAdvancedInfoChange = (): void => {
   saveService(translateServiceThis.value)
   // 更新翻译源通知
   window.api.updateTranslateServiceNotify()
+}
+
+/**
+ * 填入默认提示词 - 已有内容时不覆盖
+ *
+ * @param key    字段
+ * @param prompt 默认提示词
+ */
+const openAIPromptFillDefault = (key: string, prompt: string): void => {
+  if (isNotNull(translateServiceThis.value[key]?.trim())) {
+    return ElMessageExtend.warning('请先清空当前提示词后再填入')
+  }
+  translateServiceThis.value[key] = prompt
+  openAIAdvancedInfoChange()
 }
 
 /**
