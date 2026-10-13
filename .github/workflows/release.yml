@@ -1,11 +1,14 @@
 name: Release
 
-# 推送 v* 标签（如 v0.9.3）时自动构建 Windows 安装包并发布 Release
-# 标签说明（annotated tag message）会作为 Release 的更新内容
+# 构建 Windows 安装包并发布 Release，两种触发方式：
+# 1. 推送 v* 标签（如 v0.9.3）
+# 2. 在 Actions 页面手动运行，标签取 package.json 中的版本号（v<version>），不存在时自动创建
+# 更新内容取自 .github/release-notes.md
 on:
   push:
     tags:
       - 'v*'
+  workflow_dispatch:
 
 permissions:
   contents: write
@@ -19,9 +22,15 @@ jobs:
         with:
           fetch-depth: 0
 
-      # actions/checkout 会把附注标签转换为轻量标签 重新拉取以读取标签说明
-      - name: Fetch tags
-        run: git fetch --tags --force
+      - name: Resolve tag
+        id: tag
+        shell: bash
+        run: |
+          if [ "$GITHUB_REF_TYPE" = "tag" ]; then
+            echo "name=$GITHUB_REF_NAME" >> "$GITHUB_OUTPUT"
+          else
+            echo "name=v$(node -p "require('./package.json').version")" >> "$GITHUB_OUTPUT"
+          fi
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -45,17 +54,13 @@ jobs:
       - name: Package
         run: npx electron-builder --win --publish never
 
-      - name: Release notes
-        shell: bash
-        run: |
-          git tag -l --format='%(contents)' "$GITHUB_REF_NAME" > release-notes.md
-          cat release-notes.md
-
       - name: Publish release
         uses: softprops/action-gh-release@v2
         with:
-          name: TTime ${{ github.ref_name }}
-          body_path: release-notes.md
+          tag_name: ${{ steps.tag.outputs.name }}
+          target_commitish: ${{ github.sha }}
+          name: TTime ${{ steps.tag.outputs.name }}
+          body_path: .github/release-notes.md
           files: |
             dist/*-setup.exe
             dist/*-setup.exe.blockmap
