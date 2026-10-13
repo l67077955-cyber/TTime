@@ -1,0 +1,61 @@
+name: Release
+
+# 推送 v* 标签（如 v0.9.3）时自动构建 Windows 安装包并发布 Release
+# 标签说明（annotated tag message）会作为 Release 的更新内容
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  release-windows:
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      # actions/checkout 会把附注标签转换为轻量标签 重新拉取以读取标签说明
+      - name: Fetch tags
+        run: git fetch --tags --force
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 18
+
+      # 旧版 node-gyp 依赖 distutils 需要 Python 3.11 及以下版本
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: npm install --no-audit --no-fund
+
+      - name: Build
+        run: |
+          npm run modules-update
+          npm run build
+
+      - name: Package
+        run: npx electron-builder --win --publish never
+
+      - name: Release notes
+        shell: bash
+        run: |
+          git tag -l --format='%(contents)' "$GITHUB_REF_NAME" > release-notes.md
+          cat release-notes.md
+
+      - name: Publish release
+        uses: softprops/action-gh-release@v2
+        with:
+          name: TTime ${{ github.ref_name }}
+          body_path: release-notes.md
+          files: |
+            dist/*-setup.exe
+            dist/*-setup.exe.blockmap
