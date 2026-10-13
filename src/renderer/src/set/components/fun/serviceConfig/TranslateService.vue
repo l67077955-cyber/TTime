@@ -102,14 +102,64 @@
             '
             label='模型'
           >
-            <el-select v-model='translateServiceThis.model' size='small'>
+            <el-autocomplete
+              v-model='translateServiceThis.model'
+              :fetch-suggestions='openAIModelSuggestions'
+              placeholder='可直接输入任意模型名称，如 deepseek-chat'
+              clearable
+              spellcheck='false'
+              style='width: 100%'
+              @change='openAIAdvancedInfoChange'
+              @select='openAIAdvancedInfoChange'
+            />
+          </el-form-item>
+          <el-form-item
+            v-if='translateServiceThis.type === TranslateServiceEnum.OPEN_AI'
+            label='思考强度'
+          >
+            <el-select
+              v-model='translateServiceThis.reasoningEffort'
+              size='small'
+              placeholder='默认（不传递）'
+              @change='openAIAdvancedInfoChange'
+            >
               <el-option
-                v-for='model in openAIModelList'
-                :key='model.value'
-                :label='model.label'
-                :value='model.value'
+                v-for='effort in openAIReasoningEffortList'
+                :key='effort.value'
+                :label='effort.label'
+                :value='effort.value'
               />
             </el-select>
+            <span class='form-switch-span'>
+              对应 reasoning_effort 参数，适用于 OpenAI / Gemini 等，其他服务商请使用下方额外参数
+            </span>
+          </el-form-item>
+          <el-form-item
+            v-if='translateServiceThis.type === TranslateServiceEnum.OPEN_AI'
+            label='额外参数'
+          >
+            <el-input
+              v-model='translateServiceThis.extraParams'
+              type='textarea'
+              :autosize='{ minRows: 2, maxRows: 8 }'
+              placeholder='JSON 格式，会合并到请求体中，例如：{"thinking": {"type": "disabled"}}'
+              spellcheck='false'
+              @change='openAIExtraParamsChange'
+            />
+            <el-dropdown trigger='click' @command='openAIExtraParamsPresetSelect'>
+              <el-button size='small' style='margin-top: 5px'>插入常用参数</el-button>
+              <template #dropdown>
+                <el-dropdown-menu>
+                  <el-dropdown-item
+                    v-for='(preset, index) in openAIExtraParamsPresetList'
+                    :key='index'
+                    :command='preset'
+                  >
+                    {{ preset.label }}
+                  </el-dropdown-item>
+                </el-dropdown-menu>
+              </template>
+            </el-dropdown>
           </el-form-item>
 
           <el-form-item
@@ -213,7 +263,11 @@ import { isNotNull, isNotUrl, isNull } from '../../../../../../common/utils/vali
 import TranslateServiceEnum from '../../../../../../common/enums/TranslateServiceEnum'
 import ElMessageExtend from '../../../../utils/messageExtend'
 import { REnum } from '../../../../enums/REnum'
-import { OpenAIModelEnum } from '../../../../../../common/enums/OpenAIModelEnum'
+import {
+  OpenAIExtraParamsPresetList,
+  OpenAIModelEnum,
+  OpenAIReasoningEffortList
+} from '../../../../../../common/enums/OpenAIModelEnum'
 
 // 翻译服务验证状态
 const checkIngStatus = ref(false)
@@ -245,6 +299,67 @@ for (let i = 1; i < translateServiceSelectMenuListTemp.length; i++) {
 const translateServiceSelectMenuList = ref(translateServiceSelectMenuListTemp)
 
 const openAIModelList = OpenAIModelEnum.MODEL_LIST
+const openAIReasoningEffortList = OpenAIReasoningEffortList
+const openAIExtraParamsPresetList = OpenAIExtraParamsPresetList
+
+/**
+ * 模型输入提示
+ *
+ * @param queryString 输入内容
+ * @param callback    回调
+ */
+const openAIModelSuggestions = (queryString: string, callback): void => {
+  const query = (queryString ?? '').toLowerCase()
+  callback(
+    openAIModelList.filter((model) => isNull(query) || model.value.toLowerCase().includes(query))
+  )
+}
+
+/**
+ * OpenAI 模型 / 思考强度 / 额外参数修改后直接保存 无需重新验证
+ */
+const openAIAdvancedInfoChange = (): void => {
+  saveService(translateServiceThis.value)
+  // 更新翻译源通知
+  window.api.updateTranslateServiceNotify()
+}
+
+/**
+ * 额外参数修改
+ */
+const openAIExtraParamsChange = (): void => {
+  const extraParams = translateServiceThis.value.extraParams
+  if (isNotNull(extraParams) && isNotNull(extraParams.trim())) {
+    try {
+      const json = JSON.parse(extraParams)
+      if (typeof json !== 'object' || Array.isArray(json) || json === null) {
+        throw new Error()
+      }
+    } catch (e) {
+      return ElMessageExtend.warning('额外参数需要是 JSON 对象格式，例如：{"thinking": {"type": "disabled"}}')
+    }
+  }
+  openAIAdvancedInfoChange()
+}
+
+/**
+ * 插入常用额外参数 - 与已填写的参数合并
+ *
+ * @param preset 常用参数
+ */
+const openAIExtraParamsPresetSelect = (preset): void => {
+  let params = {}
+  const extraParams = translateServiceThis.value.extraParams
+  if (isNotNull(extraParams) && isNotNull(extraParams.trim())) {
+    try {
+      params = JSON.parse(extraParams)
+    } catch (e) {
+      return ElMessageExtend.warning('当前额外参数不是合法的 JSON，请先修正后再插入')
+    }
+  }
+  translateServiceThis.value.extraParams = JSON.stringify({ ...params, ...preset.value }, null, 2)
+  openAIAdvancedInfoChange()
+}
 
 /**
  * 设置当前选中项默认为第一个翻译服务

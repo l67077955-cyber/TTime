@@ -222,10 +222,33 @@ class OpenAIChannelRequest {
           { role: 'user', content: commandPrompt },
           { role: 'user', content: contentPrompt }
         ],
-        stream: !isCheckRequest
+        stream: !isCheckRequest,
+        ...OpenAIChannelRequest.buildExtraRequestParams(info)
       },
       quoteProcessor
     }
+  }
+
+  /**
+   * 构建额外请求参数 - 思考强度 / 自定义额外参数
+   *
+   * @param info 翻译信息
+   */
+  static buildExtraRequestParams(info): object {
+    const params = {}
+    if (isNotNull(info.reasoningEffort)) {
+      params['reasoning_effort'] = info.reasoningEffort
+      // 思考模型大多不支持 temperature 参数
+      params['temperature'] = undefined
+    }
+    if (isNotNull(info.extraParams) && isNotNull(info.extraParams.trim())) {
+      try {
+        Object.assign(params, JSON.parse(info.extraParams))
+      } catch (e) {
+        window.api.logErrorEvent('[OpenAI翻译事件] - 额外请求参数不是合法的 JSON : ', info.extraParams)
+      }
+    }
+    return params
   }
 
   /**

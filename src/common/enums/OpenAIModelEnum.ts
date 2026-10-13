@@ -33,9 +33,17 @@ class OpenAIModelEnum {
   static REQUEST_URL = 'https://api.openai.com'
 
   /**
-   * 模型列表
+   * 模型列表 - 仅作为输入提示 可自行输入任意模型名称
    */
   static MODEL_LIST = [
+    { value: 'gpt-4o-mini', label: 'gpt-4o-mini' },
+    { value: 'gpt-4o', label: 'gpt-4o' },
+    { value: 'gpt-4.1-mini', label: 'gpt-4.1-mini' },
+    { value: 'gpt-4.1', label: 'gpt-4.1' },
+    { value: 'gpt-5-mini', label: 'gpt-5-mini' },
+    { value: 'gpt-5', label: 'gpt-5' },
+    { value: 'deepseek-chat', label: 'deepseek-chat' },
+    { value: 'deepseek-reasoner', label: 'deepseek-reasoner' },
     {
       value: OpenAIModelEnum.GPT_TURBO_35,
       label: OpenAIModelEnum.GPT_TURBO_35
@@ -58,5 +66,51 @@ class OpenAIModelEnum {
     }
   ]
 }
+
+/**
+ * 思考强度列表 - 对应请求参数 reasoning_effort
+ */
+export const OpenAIReasoningEffortList = [
+  { value: '', label: '默认（不传递）' },
+  { value: 'none', label: 'none（关闭思考）' },
+  { value: 'minimal', label: 'minimal' },
+  { value: 'low', label: 'low' },
+  { value: 'medium', label: 'medium' },
+  { value: 'high', label: 'high' }
+]
+
+/**
+ * 额外请求参数常用模板 - 各服务商控制思考等功能的参数并不统一
+ */
+export const OpenAIExtraParamsPresetList = [
+  {
+    label: 'DeepSeek / 智谱GLM / 豆包 - 关闭思考',
+    value: { thinking: { type: 'disabled' } }
+  },
+  {
+    label: 'DeepSeek / 智谱GLM / 豆包 - 开启思考',
+    value: { thinking: { type: 'enabled' } }
+  },
+  {
+    label: '通义千问(Qwen) - 关闭思考',
+    value: { enable_thinking: false }
+  },
+  {
+    label: '通义千问(Qwen) - 开启思考',
+    value: { enable_thinking: true, thinking_budget: 1024 }
+  },
+  {
+    label: 'Gemini(OpenAI兼容) - 关闭思考',
+    value: { reasoning_effort: 'none' }
+  },
+  {
+    label: '限制最大输出 token',
+    value: { max_tokens: 4096 }
+  },
+  {
+    label: '设置随机性 temperature',
+    value: { temperature: 0.3 }
+  }
+]
 
 export { OpenAIModelEnum }

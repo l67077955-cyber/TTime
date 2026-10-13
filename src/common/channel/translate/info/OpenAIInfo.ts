@@ -6,8 +6,12 @@ export default {
   isOneAppKey: true,
   // 构建时默认信息
   defaultInfo: {
-    model: 'gpt-3.5-turbo',
-    requestUrl: 'https://api.openai.com'
+    model: 'gpt-4o-mini',
+    requestUrl: 'https://api.openai.com',
+    // 思考强度 为空时不传递 reasoning_effort 参数
+    reasoningEffort: '',
+    // 额外请求参数(JSON) 会合并到请求体中 用于设置各服务商特有参数
+    extraParams: ''
   },
   // 翻译语言
   languageList: [
