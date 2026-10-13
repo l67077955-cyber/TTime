@@ -423,7 +423,6 @@ class GlobalWin {
     }
     GlobalWin.winShow(GlobalWin.setWin)
     GlobalWin.setWin.focus()
-    GlobalWin.setWin.webContents.send('refresh-user-info-event')
   }
 
 }

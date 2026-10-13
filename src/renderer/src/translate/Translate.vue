@@ -35,7 +35,6 @@ import { cacheGet, oldCacheGet } from '../utils/cacheUtil'
 import '../channel/ChannelRequest'
 import TranslateServiceEnum from '../../../common/enums/TranslateServiceEnum'
 import OcrServiceEnum from '../../../common/enums/OcrServiceEnum'
-import { loadNewServiceInfo } from '../utils/memberUtil'
 import { YesNoEnum } from '../../../common/enums/YesNoEnum'
 
 initTheme()
@@ -51,8 +50,6 @@ window.api.ttimeApiAppStart()
 
 // 页面高度改变监听
 window.api.pageHeightChangeEvent()
-
-loadNewServiceInfo()
 
 // 清空翻译输入、结果内容事件
 window.api.clearAllTranslateContentEvent(() => {

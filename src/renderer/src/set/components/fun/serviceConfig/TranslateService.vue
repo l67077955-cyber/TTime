@@ -67,8 +67,6 @@
           </div>
         </el-tooltip>
 
-        <vip-info-service-buttons :service-type='ServiceTypeEnum.TRANSLATE' />
-
       </div>
     </div>
     <div class='translate-service-set-block'>
@@ -214,17 +212,15 @@ import TranslateServiceEnum from '../../../../../../common/enums/TranslateServic
 import ElMessageExtend from '../../../../utils/messageExtend'
 import { REnum } from '../../../../enums/REnum'
 import { OpenAIModelEnum } from '../../../../../../common/enums/OpenAIModelEnum'
-import { loadNewServiceInfo, saveServiceInfoHandle } from '../../../../utils/memberUtil'
-import VipInfoServiceButtons from './vip/VipInfoServiceButtons.vue'
-import { ServiceTypeEnum } from '../../../../../../common/enums/ServiceTypeEnum'
 
 // 翻译服务验证状态
 const checkIngStatus = ref(false)
 
 // 可添加的翻译源列表 先把 values 格式转换为数组
+// TTimeAI 翻译源依赖会员登录 已不再提供
 const translateServiceSelectMenuListTemp = Array.from(
   TranslateServiceBuilder.getServiceList().values()
-)
+).filter((service) => service.type !== TranslateServiceEnum.TTIME_AI)
 // 这里获取翻译源对应的内置翻译源状态
 translateServiceSelectMenuListTemp.forEach((service) => {
   service['isBuiltIn'] = buildTranslateService(service.type)?.['isBuiltIn']
@@ -301,8 +297,6 @@ const addTranslateService = (type: string): void => {
   }
   // 更新翻译源通知
   window.api.updateTranslateServiceNotify()
-  // 保存服务信息事件
-  saveServiceInfoHandle(ServiceTypeEnum.TRANSLATE)
 }
 
 /**
@@ -321,8 +315,6 @@ const deleteTranslateService = (): void => {
   selectOneServiceThis()
   // 更新翻译源通知
   window.api.updateTranslateServiceNotify()
-  // 保存服务信息事件
-  saveServiceInfoHandle(ServiceTypeEnum.TRANSLATE)
 }
 
 /**
@@ -409,8 +401,6 @@ window.api.apiCheckTranslateCallbackEvent((type, res) => {
   }
   // 更新翻译源通知
   window.api.updateTranslateServiceNotify()
-  // 保存服务信息事件
-  saveServiceInfoHandle(ServiceTypeEnum.TRANSLATE)
 })
 
 /**
@@ -429,8 +419,6 @@ const serviceUseStatusChange = (translateService): void => {
   saveService(translateService)
   // 更新翻译源通知
   window.api.updateTranslateServiceNotify()
-  // 保存服务信息事件
-  saveServiceInfoHandle(ServiceTypeEnum.TRANSLATE)
 }
 
 /**
@@ -484,8 +472,6 @@ const serviceSortDragChange = (event): void => {
   updateThisServiceMap(swappedMap)
   // 更新翻译源通知
   window.api.updateTranslateServiceNotify()
-  // 保存服务信息事件
-  saveServiceInfoHandle(ServiceTypeEnum.TRANSLATE)
 }
 
 /**
@@ -506,23 +492,7 @@ const serviceNameInput = (): void => {
   saveService(translateServiceThis.value)
   // 更新翻译源通知
   window.api.updateTranslateServiceNotify()
-  // 保存服务信息事件
-  saveServiceInfoHandle(ServiceTypeEnum.TRANSLATE)
 }
-
-/**
- * 刷新服务信息事件
- */
-window.api.refreshServiceInfoEvent(() => {
-  updateThisServiceMap(getTranslateServiceMap())
-  // 设置当前选中项默认为第一个服务
-  selectOneServiceThis()
-  // 更新翻译源通知
-  window.api.updateTranslateServiceNotify()
-})
-
-loadNewServiceInfo()
-
 </script>
 
 <style lang='scss' scoped>

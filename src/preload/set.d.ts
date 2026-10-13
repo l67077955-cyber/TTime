@@ -25,11 +25,6 @@ declare global {
     setWinFocusEvent
     winFontSizeNotify
     winShowEvent
-    refreshUserInfoEvent
-    refreshServiceInfoEvent
-    refreshServiceInfoNotify
-    loginSuccessEvent
-    authRefreshSuccessEvent
   }
 
   interface Window {

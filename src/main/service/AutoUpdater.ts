@@ -117,18 +117,9 @@ class AutoUpdater {
       })
       AutoUpdater.autoUpdaterStartCheck()
     }, 1000 * 10)
-    app.whenReady().then(() => {
-      setTimeout(() => {
-        // 加载云配置
-        StoreService.initCloudConfig()
-      }, 1000)
-    })
     // 每12小时检测一次
     setInterval(() => {
       AutoUpdater.autoUpdaterStartCheck()
-      app.whenReady().then(() => {
-        StoreService.initCloudConfig()
-      })
     }, 1000 * 60 * 60 * 12)
   }
 

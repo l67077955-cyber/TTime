@@ -160,56 +160,6 @@ const winShowEvent = (callback): void => {
   })
 }
 
-/**
- * 刷新用户信息
- *
- * @param callback 回调方法 用于主进程内部触发时推送到Vue页面执行
- */
-const refreshUserInfoEvent = (callback): void => {
-  ipcRenderer.on('refresh-user-info-event', () => {
-    callback()
-  })
-}
-/**
- * 刷新服务信息
- *
- * @param callback 回调方法 用于主进程内部触发时推送到Vue页面执行
- */
-const refreshServiceInfoEvent = (callback): void => {
-  ipcRenderer.on('refresh-service-info-event', () => {
-    callback()
-  })
-}
-
-/**
- * 刷新服务信息通知
- */
-const refreshServiceInfoNotify = (): void => {
-  ipcRenderer.invoke('refresh-service-info-notify')
-}
-
-/**
- * 登录成功回调
- *
- * @param callback 回调方法 用于主进程内部触发时推送到Vue页面执行
- */
-const loginSuccessEvent = (callback): void => {
-  ipcRenderer.on('login-success-event', () => {
-    callback()
-  })
-}
-
-/**
- * 授权刷新成功回调
- *
- * @param callback 回调方法 用于主进程内部触发时推送到Vue页面执行
- */
-const authRefreshSuccessEvent = (callback): void => {
-  ipcRenderer.on('auth-refresh-success-event', () => {
-    callback()
-  })
-}
-
 
 const api = {
   ...common,
@@ -230,12 +180,7 @@ const api = {
   updateConfigInfoPath,
   setWinFocusEvent,
   winFontSizeNotify,
-  winShowEvent,
-  refreshUserInfoEvent,
-  refreshServiceInfoEvent,
-  refreshServiceInfoNotify,
-  loginSuccessEvent,
-  authRefreshSuccessEvent
+  winShowEvent
 }
 
 // Use `contextBridge` APIs to expose Electron APIs to

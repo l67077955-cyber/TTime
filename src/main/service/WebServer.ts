@@ -1,6 +1,5 @@
 import { parseCustomProtocolUrl } from '../../common/utils/urlUtil'
 import { isNull } from '../../common/utils/validate'
-import TTimeAuth from './auth/TTimeAuth'
 import StoreService from './StoreService'
 import log from '../utils/log'
 import http from 'http'
@@ -32,12 +31,6 @@ export const initServer = (): void => {
     const parseCustomProtocol = parseCustomProtocolUrl(req.url)
     if (isNull(parseCustomProtocol)) {
       return
-    }
-    if (parseCustomProtocol.path === 'login') {
-      const token = parseCustomProtocol.queryParams.token
-      if (token) {
-        TTimeAuth.login(token)
-      }
     }
     res.writeHead(200, { 'Content-Type': 'text/html;charset=UTF8' })
     res.end(
