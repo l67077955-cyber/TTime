@@ -115,12 +115,8 @@ class AutoUpdater {
           log.info('[检测安装包事件] 旧版本安装包清理成功')
         })
       })
-      AutoUpdater.autoUpdaterStartCheck()
+      // 已移除官方服务器的自动更新检测 避免自行构建的版本被官方版本覆盖
     }, 1000 * 10)
-    // 每12小时检测一次
-    setInterval(() => {
-      AutoUpdater.autoUpdaterStartCheck()
-    }, 1000 * 60 * 60 * 12)
   }
 
   /**
@@ -340,17 +336,6 @@ class AutoUpdater {
   }
 
   /**
-   * 自动更新检测
-   */
-  static autoUpdaterStartCheck(): void {
-    const autoUpdater = StoreService.configGet('autoUpdater')
-    if (YesNoEnum.Y === autoUpdater) {
-      // 静默更新检测
-      AutoUpdater.startCheck(true)
-    }
-  }
-
-  /**
    * 更新状态发送事件
    *
    * @param autoUpdaterEnum 自动更新枚举
@@ -482,8 +467,7 @@ ipcMain.handle('auto-updater-start-check', () => {
  * 静默更新检测
  */
 ipcMain.handle('auto-updater-silence-start-check', () => {
-  // 设置静默更新状态
-  AutoUpdater.startCheck(true)
+  // 已移除官方服务器的自动更新检测
 })
 
 /**

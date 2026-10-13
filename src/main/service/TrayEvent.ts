@@ -3,7 +3,6 @@ import { isNotNull } from '../../common/utils/validate'
 import * as path from 'path'
 import { SystemTypeEnum } from '../enums/SystemTypeEnum'
 import createSetWindow from './Set'
-import AutoUpdater from './AutoUpdater'
 import log from '../utils/log'
 import { GlobalShortcutEvent } from './GlobalShortcutEvent'
 import GlobalWin from './GlobalWin'
@@ -59,8 +58,8 @@ class TrayEvent {
       {
         label: '检查更新',
         click: (): void => {
-          // 自动更新逻辑
-          AutoUpdater.startCheck(false)
+          // 已移除官方服务器的更新检测 改为打开 Releases 页面查看新版本
+          shell.openExternal('https://github.com/l67077955-cyber/TTime/releases')
         }
       },
       {
