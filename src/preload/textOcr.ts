@@ -68,7 +68,7 @@ async function init(detPath, recPath, dicPath) {
   // 识别器
   rec = await ort.InferenceSession.create(recPath)
   // 字典路径
-  dict = fs.readFileSync(dicPath).toString().split('\n')
+  dict = fs.readFileSync(dicPath).toString().split(/\r?\n/)
   await WordsNinja.loadDictionary()
 }
 
