@@ -68,7 +68,13 @@ async function init(detPath, recPath, dicPath) {
   // 识别器
   rec = await ort.InferenceSession.create(recPath)
   // 字典路径
-  dict = fs.readFileSync(dicPath).toString().split(/\r?\n/)
+  dict = fs
+    .readFileSync(dicPath)
+    .toString()
+    .split(/\r?\n/)
+    .filter((c) => c !== '')
+  // 与 PaddleOCR use_space_char 一致，字典末尾补充空格字符
+  dict.push(' ')
   await WordsNinja.loadDictionary()
 }
 
@@ -344,7 +350,7 @@ function identifyAfter(data, character): [] {
     const preds_prob = []
 
     for (let i = l; i < l + pred_len * data.dims[1]; i += pred_len) {
-      const tmpArr = data.data.slice(i, i + pred_len - 1)
+      const tmpArr = data.data.slice(i, i + pred_len)
       const tmpMax = Math.max(...tmpArr)
       const tmpIdx = tmpArr.indexOf(tmpMax)
       // @ts-ignore 忽略校验
