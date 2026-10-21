@@ -8,7 +8,8 @@ $input-text-size: var(--input-text-size);
   border: 0;
   resize: none;
   padding: 5px;
-  width: 98%;
+  width: 100%;
+  box-sizing: border-box;
   font-size: $input-text-size;
 }
 

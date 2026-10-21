@@ -1,4 +1,4 @@
-import { app, clipboard, ipcMain, nativeImage } from 'electron'
+import { app, clipboard, ipcMain, nativeImage, screen } from 'electron'
 import { GlobalShortcutEvent } from './GlobalShortcutEvent'
 import { isNull } from '../../common/utils/validate'
 import { SystemTypeEnum } from '../enums/SystemTypeEnum'
@@ -171,6 +171,20 @@ class WinEvent {
    * @param height    高度
    */
   static updateWinSize(win, width, height): void {
+    if (isNull(win)) {
+      return
+    }
+    const bounds = win.getBounds()
+    const display =
+      screen.getDisplayMatching(bounds) ||
+      screen.getDisplayNearestPoint({ x: bounds.x, y: bounds.y })
+    const workArea = display?.workArea
+    if (workArea) {
+      const maxWinHeight = Math.min(722, Math.max(240, workArea.height - 20))
+      height = Math.min(Math.max(100, Math.ceil(height)), maxWinHeight)
+    } else {
+      height = Math.min(Math.max(100, Math.ceil(height)), 722)
+    }
     // win.setMaximumSize(width, height)
     win.setMinimumSize(450, height)
     win.setSize(width, height)
@@ -182,6 +196,16 @@ class WinEvent {
     if (newWidth != width) {
       if (newWidth > width) {
         win.setSize(width - (newWidth - width), height)
+      }
+    }
+    if (workArea) {
+      const currentBounds = win.getBounds()
+      const maxBottom = workArea.y + workArea.height - 8
+      if (currentBounds.y + height > maxBottom) {
+        const nextY = Math.max(workArea.y + 8, maxBottom - height)
+        if (nextY !== currentBounds.y) {
+          win.setPosition(currentBounds.x, Math.floor(nextY))
+        }
       }
     }
   }

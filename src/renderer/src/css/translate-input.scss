@@ -12,7 +12,8 @@
       border: 0;
       outline: none;
       resize: none;
-      width: 98%;
+      width: 100%;
+      box-sizing: border-box;
       font-size: 14px;
       padding: 10px 10px 1px 10px;
     }

@@ -257,11 +257,13 @@ window.api[getTranslateServiceBackEventName(props.translateService)]((res) => {
     }
     translatedResultContent.value += translatedResultContentTemp
     showResult.value = true
+    adjustTextareaHeight()
     return
   }
   translatedResultContent.value = translatedResultContentTemp
   showResult.value = true
   isResultLoading.value = false
+  adjustTextareaHeight()
 
   copySpecialResultShow.value = isEnglish(translatedResultContentTemp)
   copyCamelCaseResultStatus.value = cacheGet('copyCamelCaseResultStatus') === YesNoEnum.Y
@@ -345,32 +347,61 @@ const clearTranslatedResultContentEvent = (): void => {
   setTranslatedResultContent('')
 }
 
+const doAdjustTextareaHeight = (): void => {
+  const textarea = translatedResultContentRef.value?.ref
+  if (isNull(textarea)) {
+    return
+  }
+  const blockLayer = textarea.closest('.block-layer') as HTMLElement | null
+  const prevScrollTop = blockLayer ? blockLayer.scrollTop : 0
+  // 设置el-textarea的高度为自适应高度并隐藏内部多余滚动条
+  textarea.style.overflowY = 'hidden'
+  textarea.style.height = 'auto'
+  textarea.style.height = textarea.scrollHeight + 'px'
+  // 若外层滚动条出现引起宽度缩小、文本二次换行，再修正一次高度
+  if (textarea.scrollHeight > textarea.clientHeight) {
+    textarea.style.height = textarea.scrollHeight + 'px'
+  }
+  if (blockLayer && prevScrollTop > 0) {
+    blockLayer.scrollTop = prevScrollTop
+  }
+  window.api.windowHeightChangeEvent()
+}
+
 /**
  * 重新计算翻译结果容器高度
  */
 const adjustTextareaHeight = (): void => {
-  if (isNull(translatedResultContentRef.value) || translatedResultContent.value.length < 100) {
+  if (isNull(translatedResultContent.value)) {
     return
   }
-  // 获取el-textarea的DOM元素
-  const textarea = translatedResultContentRef.value.ref
-  // 设置el-textarea的高度为自适应高度
-  textarea.style.height = 'auto'
-  // 立即重新计算高度
-  textarea.style.height = textarea.scrollHeight + 'px'
+  nextTick(() => {
+    nextTick(() => {
+      doAdjustTextareaHeight()
+    })
+    setTimeout(() => {
+      doAdjustTextareaHeight()
+    }, 100)
+    // 等待 el-collapse-transition 展开动画结束后再次校准高度
+    setTimeout(() => {
+      doAdjustTextareaHeight()
+    }, 330)
+  })
 }
 
 /**
  * 翻译结果监听
  */
 watch(translatedResultContent, () => {
-  nextTick(() => {
-    setTimeout(() => {
-      if (!isStreamTranslateService()) {
-        adjustTextareaHeight()
-      }
-    }, 100)
-  })
+  adjustTextareaHeight()
+})
+
+watch(showResult, (val) => {
+  if (val) {
+    adjustTextareaHeight()
+  } else {
+    window.api.windowHeightChangeEvent()
+  }
 })
 
 /**

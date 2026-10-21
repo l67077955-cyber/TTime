@@ -143,7 +143,7 @@ window.api.showMsgEvent((type, msg) => {
 
 .block-layer {
   overflow: auto;
-  max-height: 671px;
+  max-height: var(--ttime-translate-max-height, 671px);
   overflow-x: hidden;
 }
 

@@ -3,101 +3,118 @@ import { electronAPI } from '@electron-toolkit/preload'
 import common from './common'
 import TranslateServiceEnum from '../common/enums/TranslateServiceEnum'
 
-let windowHeightList = []
-let windowHeightEventStatue = false
-let windowHeightIntervalEvent
-
-// 停止设置窗口高度事件
-const stopWindowHeightEvent = (): void => {
-  // console.log("停止设置窗口高度事件");
-  clearInterval(windowHeightIntervalEvent)
-  windowHeightEventStatue = false
+// 计算当前屏幕下允许的窗口最大高度与滚动容器最大高度
+const getMaxWindowHeight = (): number => {
+  const availHeight = window?.screen?.availHeight || 722
+  return Math.min(722, Math.max(240, availHeight - 20))
 }
 
-const windowHeightEvent = (): void => {
-  if (windowHeightEventStatue) {
-    return
+const syncMaxHeightCssVar = (): number => {
+  const maxWinHeight = getMaxWindowHeight()
+  const maxBlockLayerHeight = Math.max(180, maxWinHeight - 51)
+  if (document?.documentElement) {
+    document.documentElement.style.setProperty(
+      '--ttime-translate-max-height',
+      `${maxBlockLayerHeight}px`
+    )
   }
-  windowHeightEventStatue = true
-  // console.log(" 触发定时执行器 ");
-  let zeroRunCount = 0
-  windowHeightIntervalEvent = setInterval(() => {
-    // console.log(" windowHeightEvent = ", windowHeightList.length, ' zeroRunCount = ', zeroRunCount);
-    if (windowHeightList.length <= 0) {
-      zeroRunCount++
-      // 执行超过10次都是空的就停止定时执行器
-      if (zeroRunCount >= 10) {
-        // console.log(" 超过10次为空 停止定时执行器 ");
-        stopWindowHeightEvent()
-      }
-      return
-    }
-    // 触发执行了的情况下重置停止定时执行器事件
-    zeroRunCount = 0
-    // 获取到需要设置的窗口大小中最大的值
-    const preScrollHeight = windowHeightList[windowHeightList.length - 1] + 5
-    // 清空列表
-    windowHeightList = []
-    // console.log("设置窗口大小 = ", preScrollHeight);
-    ipcRenderer.invoke('window-height-change-event', preScrollHeight)
-  }, 2000)
+  return maxWinHeight
+}
+
+const getActualWindowHeight = (): number => {
+  const maxWinHeight = syncMaxHeightCssVar()
+  const blockEl = document.querySelector('.block') as HTMLElement | null
+  const htmlEl = document.documentElement
+  const contentHeight = blockEl ? blockEl.offsetHeight : htmlEl ? htmlEl.offsetHeight : 334
+  const rawHeight = contentHeight + 5
+  return Math.min(maxWinHeight, Math.max(100, Math.ceil(rawHeight)))
+}
+
+let lastSentHeight = 0
+let syncTimer: ReturnType<typeof setTimeout> | null = null
+
+const applyWindowHeightNow = (): void => {
+  const targetHeight = getActualWindowHeight()
+  if (targetHeight !== lastSentHeight) {
+    lastSentHeight = targetHeight
+    ipcRenderer.invoke('window-height-change-event', targetHeight)
+  }
+}
+
+const scheduleWindowHeightSync = (delay = 60): void => {
+  if (syncTimer) {
+    clearTimeout(syncTimer)
+  }
+  syncTimer = setTimeout(() => {
+    syncTimer = null
+    applyWindowHeightNow()
+  }, delay)
 }
 
 // 监听页面高度变化
 const pageHeightChangeEvent = (): void => {
-  const targetNode = document.scrollingElement
+  syncMaxHeightCssVar()
+  const targetNode = document.scrollingElement || document.documentElement
   if (null == targetNode) {
     return
   }
-  // 观察器的配置（需要观察什么变动）
-  const config = { attributes: true, childList: true, subtree: true }
-  // @ts-ignore document 中存在的参数信息
-  let preScrollHeight = targetNode.offsetHeight
-  // 当观察到变动时执行的回调函数
-  // eslint-disable-next-line @typescript-eslint/explicit-function-return-type
-  const callback = (_mutationsList, _observer) => {
-    // eslint-disable-next-line @typescript-eslint/ban-ts-comment
-    // @ts-ignore
-    const scrollHeight = targetNode.offsetHeight
-    if (scrollHeight === preScrollHeight) {
+  let blockObserved = false
+  let resizeObserver: ResizeObserver | null = null
+  const tryObserveBlock = (): void => {
+    if (blockObserved || !resizeObserver) {
       return
     }
-    windowHeightChangeMaxEvent()
-    preScrollHeight = scrollHeight
-    // console.log("监听页面高度变化 preScrollHeight = ", preScrollHeight);
-    windowHeightList = []
-    // eslint-disable-next-line @typescript-eslint/ban-ts-comment
-    // @ts-ignore
-    windowHeightList.push(preScrollHeight)
-    setTimeout(() => {
-      stopWindowHeightEvent()
-      windowHeightEvent()
-    }, 100)
+    const blockEl = document.querySelector('.block')
+    if (blockEl) {
+      resizeObserver.observe(blockEl)
+      blockObserved = true
+    }
   }
-  // 创建一个观察器实例并传入回调函数
-  const observer = new MutationObserver(callback)
-  // 以上述配置开始观察目标节点
+  if (typeof ResizeObserver !== 'undefined') {
+    resizeObserver = new ResizeObserver(() => {
+      applyWindowHeightNow()
+      scheduleWindowHeightSync(80)
+    })
+    if (document.body) {
+      resizeObserver.observe(document.body)
+    }
+    const appEl = document.getElementById('app')
+    if (appEl) {
+      resizeObserver.observe(appEl)
+    }
+    tryObserveBlock()
+  }
+  const config = { attributes: true, childList: true, subtree: true }
+  const observer = new MutationObserver(() => {
+    tryObserveBlock()
+    applyWindowHeightNow()
+    scheduleWindowHeightSync(100)
+  })
   observer.observe(targetNode, config)
 }
 
 /**
- * 窗口高度更新为最大
+ * 窗口高度更新为最大（按当前页面实际高度与屏幕上限自适应）
  */
 const windowHeightChangeMaxEvent = (): void => {
-  ipcRenderer.invoke('window-height-change-event', 722)
+  applyWindowHeightNow()
+  scheduleWindowHeightSync(100)
+  setTimeout(() => applyWindowHeightNow(), 320)
 }
 
 /**
  * 监听页面高度更新窗口大小
  */
 const windowHeightChangeEvent = (): void => {
+  applyWindowHeightNow()
   // 延迟执行 防止获取页面高度还未更新就执行了更新窗口大小
   setTimeout(() => {
-    ipcRenderer.invoke(
-      'window-height-change-event',
-      document.getElementsByTagName('html')[0].offsetHeight + 5
-    )
-  }, 251)
+    lastSentHeight = 0
+    applyWindowHeightNow()
+  }, 120)
+  setTimeout(() => {
+    applyWindowHeightNow()
+  }, 320)
 }
 
 /**

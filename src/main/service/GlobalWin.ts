@@ -125,6 +125,11 @@ class GlobalWin {
   static mainWinShow(): void {
     const translateShowPositionType = StoreService.configGet('translateShowPositionType')
     if (TranslateShowPositionEnum.LAST_TIME === translateShowPositionType) {
+      WinEvent.updateWinSize(
+        GlobalWin.mainWin,
+        GlobalWin.mainWin.getSize()[0],
+        GlobalWin.mainWin.getSize()[1]
+      )
       GlobalWin.winShow(GlobalWin.mainWin)
       this.mainOrOcrWinShowCallback()
     } else if (TranslateShowPositionEnum.FOLLOW_MOUSE === translateShowPositionType) {
@@ -132,20 +137,27 @@ class GlobalWin {
       const { x, y } = screen.getCursorScreenPoint()
       // 设置坐标的同时设置宽高 否则在多显示器且显示器之间缩放比例不一致的情况下来回切换会导致悬浮球显示错位
       GlobalWin.mainWin.setBounds({ x: x, y: y + 11 })
+      WinEvent.updateWinSize(
+        GlobalWin.mainWin,
+        GlobalWin.mainWin.getSize()[0],
+        GlobalWin.mainWin.getSize()[1]
+      )
       GlobalWin.winShow(GlobalWin.mainWin)
       this.mainOrOcrWinShowCallback()
     } else if (TranslateShowPositionEnum.FROM_TOP === translateShowPositionType) {
       const fromTopOfWindowPercentage = StoreService.configGet('fromTopOfWindowPercentage')
       const currentMousePosition = screen.getCursorScreenPoint()
       const display = screen.getDisplayNearestPoint(currentMousePosition)
-      const activeBounds = display.bounds
+      const activeBounds = display.workArea || display.bounds
       const winWidth = GlobalWin.mainWin.getSize()[0]
       const x = activeBounds.x + (activeBounds.width - winWidth) / 2
-      const y = activeBounds.y + (activeBounds.height - 339) / 2
+      const y = activeBounds.y + ((activeBounds.height - 339) / 2) * ((fromTopOfWindowPercentage * 2) / 100)
       try {
-        GlobalWin.mainWin.setPosition(
-          Math.floor(x),
-          Math.floor(y * ((fromTopOfWindowPercentage * 2) / 100))
+        GlobalWin.mainWin.setPosition(Math.floor(x), Math.floor(y))
+        WinEvent.updateWinSize(
+          GlobalWin.mainWin,
+          GlobalWin.mainWin.getSize()[0],
+          GlobalWin.mainWin.getSize()[1]
         )
       } catch (e) {
         log.error('显示窗口设置位置异常', {
