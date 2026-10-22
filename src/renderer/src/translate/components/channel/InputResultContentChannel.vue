@@ -31,7 +31,7 @@
             :readonly="true"
             spellcheck="false"
             type="textarea"
-            autosize
+            :autosize="{ minRows: 1, maxRows: RESULT_MAX_ROWS }"
           />
 
           <div class="phonetic-layer">
@@ -163,6 +163,8 @@ watch(
 )
 // 加载loading
 const loadingImageSrc = ref(loadingImage)
+// 翻译结果框最大行数 超出后在结果框内滚动
+const RESULT_MAX_ROWS = 10
 const translateServiceThis = ref(props.translateService)
 
 // 翻译结果
@@ -348,15 +350,21 @@ const clearTranslatedResultContentEvent = (): void => {
 /**
  * 校准翻译结果容器高度
  * 高度由 el-input autosize 计算 这里只在其计算偏小（内容超出）时补足 避免结果尾部被遮挡
+ * 补足后的高度不超过 RESULT_MAX_ROWS 行 超出部分由结果框自身的滚动条滚动查看
  */
 const doAdjustTextareaHeight = (): void => {
   const textarea = translatedResultContentRef.value?.ref
   if (isNull(textarea)) {
     return
   }
-  if (textarea.scrollHeight > textarea.clientHeight) {
-    const borderHeight = textarea.offsetHeight - textarea.clientHeight
-    textarea.style.height = textarea.scrollHeight + borderHeight + 'px'
+  const style = getComputedStyle(textarea)
+  const paddingHeight = parseFloat(style.paddingTop) + parseFloat(style.paddingBottom)
+  const borderHeight = textarea.offsetHeight - textarea.clientHeight
+  const lineHeight = parseFloat(style.lineHeight) || parseFloat(style.fontSize) * 1.5
+  const maxHeight = lineHeight * RESULT_MAX_ROWS + paddingHeight + borderHeight
+  const height = Math.min(textarea.scrollHeight + borderHeight, maxHeight)
+  if (height > textarea.offsetHeight) {
+    textarea.style.height = height + 'px'
   }
 }
 
