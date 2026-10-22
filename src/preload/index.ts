@@ -3,118 +3,118 @@ import { electronAPI } from '@electron-toolkit/preload'
 import common from './common'
 import TranslateServiceEnum from '../common/enums/TranslateServiceEnum'
 
-// 计算当前屏幕下允许的窗口最大高度与滚动容器最大高度
-const getMaxWindowHeight = (): number => {
-  const availHeight = window?.screen?.availHeight || 722
-  return Math.min(722, Math.max(240, availHeight - 20))
+// 窗口最大高度 以主进程按当前显示器工作区计算的结果为准 收到之前按屏幕可用高度估算
+let maxWinHeight = Math.min(722, Math.max(240, (window?.screen?.availHeight || 722) - 20))
+// 最近一次请求（或主进程实际生效）的窗口高度
+let requestedHeight = 0
+// 内容变少时延迟缩小窗口 避免翻译过程中窗口反复缩小导致结果被截断
+const SHRINK_DELAY = 1000
+let shrinkTimer: ReturnType<typeof setTimeout> | null = null
+
+// 滚动容器(.block-layer)最大高度跟随窗口最大高度 内容超出时在容器内滚动
+const syncMaxHeightCssVar = (): void => {
+  document.documentElement?.style.setProperty(
+    '--ttime-translate-max-height',
+    `${Math.max(180, maxWinHeight - 51)}px`
+  )
 }
 
-const syncMaxHeightCssVar = (): number => {
-  const maxWinHeight = getMaxWindowHeight()
-  const maxBlockLayerHeight = Math.max(180, maxWinHeight - 51)
-  if (document?.documentElement) {
-    document.documentElement.style.setProperty(
-      '--ttime-translate-max-height',
-      `${maxBlockLayerHeight}px`
-    )
+const getContentWindowHeight = (): number => {
+  const el = (document.querySelector('.block') as HTMLElement | null) || document.documentElement
+  const contentHeight = el ? el.offsetHeight : 334
+  return Math.min(maxWinHeight, Math.max(100, Math.ceil(contentHeight + 5)))
+}
+
+const sendWindowHeight = (height: number, force = false): void => {
+  if (!force && height === requestedHeight) {
+    return
   }
-  return maxWinHeight
+  requestedHeight = height
+  ipcRenderer.invoke('window-height-change-event', height)
 }
 
-const getActualWindowHeight = (): number => {
-  const maxWinHeight = syncMaxHeightCssVar()
-  const blockEl = document.querySelector('.block') as HTMLElement | null
-  const htmlEl = document.documentElement
-  const contentHeight = blockEl ? blockEl.offsetHeight : htmlEl ? htmlEl.offsetHeight : 334
-  const rawHeight = contentHeight + 5
-  return Math.min(maxWinHeight, Math.max(100, Math.ceil(rawHeight)))
-}
-
-let lastSentHeight = 0
-let syncTimer: ReturnType<typeof setTimeout> | null = null
-
-const applyWindowHeightNow = (): void => {
-  const targetHeight = getActualWindowHeight()
-  if (targetHeight !== lastSentHeight) {
-    lastSentHeight = targetHeight
-    ipcRenderer.invoke('window-height-change-event', targetHeight)
+const clearShrinkTimer = (): void => {
+  if (shrinkTimer) {
+    clearTimeout(shrinkTimer)
+    shrinkTimer = null
   }
 }
 
-const scheduleWindowHeightSync = (delay = 60): void => {
-  if (syncTimer) {
-    clearTimeout(syncTimer)
-  }
-  syncTimer = setTimeout(() => {
-    syncTimer = null
-    applyWindowHeightNow()
-  }, delay)
+const scheduleShrink = (): void => {
+  clearShrinkTimer()
+  shrinkTimer = setTimeout(() => {
+    shrinkTimer = null
+    sendWindowHeight(getContentWindowHeight())
+  }, SHRINK_DELAY)
 }
+
+/**
+ * 按内容高度同步窗口高度 内容变多时立即放大 变少时延迟缩小
+ */
+const syncWindowHeight = (): void => {
+  const height = getContentWindowHeight()
+  if (height >= requestedHeight) {
+    clearShrinkTimer()
+    sendWindowHeight(height)
+  } else {
+    scheduleShrink()
+  }
+}
+
+// 主进程应用窗口高度后回传实际高度与当前显示器下的最大高度
+ipcRenderer.on('win-height-limit-update', (_event, { height, maxHeight }) => {
+  requestedHeight = height
+  if (maxHeight !== maxWinHeight) {
+    maxWinHeight = maxHeight
+    syncMaxHeightCssVar()
+    syncWindowHeight()
+  }
+})
 
 // 监听页面高度变化
 const pageHeightChangeEvent = (): void => {
   syncMaxHeightCssVar()
-  const targetNode = document.scrollingElement || document.documentElement
-  if (null == targetNode) {
+  if (typeof ResizeObserver === 'undefined' || !document.body) {
     return
   }
-  let blockObserved = false
-  let resizeObserver: ResizeObserver | null = null
-  const tryObserveBlock = (): void => {
-    if (blockObserved || !resizeObserver) {
+  const resizeObserver = new ResizeObserver(() => syncWindowHeight())
+  resizeObserver.observe(document.body)
+  // .block 由 Vue 渲染 挂载或被替换时重新观察
+  let observedBlock: Element | null = null
+  const observeBlock = (): void => {
+    const blockEl = document.querySelector('.block')
+    if (blockEl === observedBlock) {
       return
     }
-    const blockEl = document.querySelector('.block')
+    if (observedBlock) {
+      resizeObserver.unobserve(observedBlock)
+    }
     if (blockEl) {
       resizeObserver.observe(blockEl)
-      blockObserved = true
     }
+    observedBlock = blockEl
   }
-  if (typeof ResizeObserver !== 'undefined') {
-    resizeObserver = new ResizeObserver(() => {
-      applyWindowHeightNow()
-      scheduleWindowHeightSync(80)
-    })
-    if (document.body) {
-      resizeObserver.observe(document.body)
-    }
-    const appEl = document.getElementById('app')
-    if (appEl) {
-      resizeObserver.observe(appEl)
-    }
-    tryObserveBlock()
-  }
-  const config = { attributes: true, childList: true, subtree: true }
-  const observer = new MutationObserver(() => {
-    tryObserveBlock()
-    applyWindowHeightNow()
-    scheduleWindowHeightSync(100)
-  })
-  observer.observe(targetNode, config)
+  observeBlock()
+  new MutationObserver(observeBlock).observe(document.body, { childList: true, subtree: true })
 }
 
 /**
- * 窗口高度更新为最大（按当前页面实际高度与屏幕上限自适应）
+ * 窗口高度更新为最大 翻译结果返回期间保持最大 内容稳定后再按实际高度缩小
  */
 const windowHeightChangeMaxEvent = (): void => {
-  applyWindowHeightNow()
-  scheduleWindowHeightSync(100)
-  setTimeout(() => applyWindowHeightNow(), 320)
+  sendWindowHeight(maxWinHeight)
+  scheduleShrink()
 }
 
 /**
  * 监听页面高度更新窗口大小
  */
 const windowHeightChangeEvent = (): void => {
-  applyWindowHeightNow()
   // 延迟执行 防止获取页面高度还未更新就执行了更新窗口大小
   setTimeout(() => {
-    lastSentHeight = 0
-    applyWindowHeightNow()
+    clearShrinkTimer()
+    sendWindowHeight(getContentWindowHeight(), true)
   }, 120)
-  setTimeout(() => {
-    applyWindowHeightNow()
-  }, 320)
 }
 
 /**

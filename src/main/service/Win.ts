@@ -7,8 +7,15 @@ import log from '../utils/log'
 import { EnvEnum } from '../enums/EnvEnum'
 import GlobalWin from './GlobalWin'
 
+// 翻译窗口高度上下限
+const MAX_WIN_HEIGHT = 722
+const MIN_WIN_HEIGHT = 100
+
 class WinEvent {
   static mainWinInfo
+
+  // 窗口因底边越界被上移时记录的原始纵坐标与上移后的纵坐标
+  static winShiftMap = new Map<number, { originY: number; shiftedY: number }>()
 
   constructor(mainWinInfo) {
     WinEvent.mainWinInfo = mainWinInfo
@@ -175,16 +182,9 @@ class WinEvent {
       return
     }
     const bounds = win.getBounds()
-    const display =
-      screen.getDisplayMatching(bounds) ||
-      screen.getDisplayNearestPoint({ x: bounds.x, y: bounds.y })
-    const workArea = display?.workArea
-    if (workArea) {
-      const maxWinHeight = Math.min(722, Math.max(240, workArea.height - 20))
-      height = Math.min(Math.max(100, Math.ceil(height)), maxWinHeight)
-    } else {
-      height = Math.min(Math.max(100, Math.ceil(height)), 722)
-    }
+    const workArea = screen.getDisplayMatching(bounds).workArea
+    const maxHeight = WinEvent.getMaxWinHeight(workArea)
+    height = Math.min(Math.max(MIN_WIN_HEIGHT, Math.ceil(height)), maxHeight)
     // win.setMaximumSize(width, height)
     win.setMinimumSize(450, height)
     win.setSize(width, height)
@@ -198,16 +198,46 @@ class WinEvent {
         win.setSize(width - (newWidth - width), height)
       }
     }
-    if (workArea) {
-      const currentBounds = win.getBounds()
-      const maxBottom = workArea.y + workArea.height - 8
-      if (currentBounds.y + height > maxBottom) {
-        const nextY = Math.max(workArea.y + 8, maxBottom - height)
-        if (nextY !== currentBounds.y) {
-          win.setPosition(currentBounds.x, Math.floor(nextY))
-        }
-      }
+    WinEvent.keepWinInWorkArea(win, height, workArea)
+    // 通知页面实际生效的窗口高度与当前显示器下的最大高度 页面以此为准同步滚动容器高度
+    win.webContents.send('win-height-limit-update', { height: win.getSize()[1], maxHeight })
+  }
+
+  /**
+   * 根据显示器工作区计算窗口最大高度
+   */
+  static getMaxWinHeight(workArea): number {
+    return Math.min(MAX_WIN_HEIGHT, Math.max(240, workArea.height - 20))
+  }
+
+  /**
+   * 窗口底边超出工作区时上移窗口 内容变少后再移回原位置
+   * 用户手动移动过窗口时不再移回
+   */
+  static keepWinInWorkArea(win, height, workArea): void {
+    const { x, y } = win.getBounds()
+    const shift = WinEvent.winShiftMap.get(win.id)
+    if (shift && shift.shiftedY !== y) {
+      WinEvent.winShiftMap.delete(win.id)
     }
+    const originY = WinEvent.winShiftMap.get(win.id)?.originY ?? y
+    const maxBottom = workArea.y + workArea.height - 8
+    const nextY = Math.floor(Math.max(workArea.y + 8, Math.min(originY, maxBottom - height)))
+    if (nextY === originY) {
+      WinEvent.winShiftMap.delete(win.id)
+    } else {
+      WinEvent.winShiftMap.set(win.id, { originY, shiftedY: nextY })
+    }
+    if (nextY !== y) {
+      win.setPosition(x, nextY)
+    }
+  }
+
+  /**
+   * 窗口被重新定位显示时 清除之前记录的上移信息
+   */
+  static resetWinShift(win): void {
+    WinEvent.winShiftMap.delete(win.id)
   }
 }
 

@@ -125,7 +125,7 @@
 </template>
 
 <script setup lang="ts">
-import { nextTick, ref, watch } from 'vue'
+import { ref, watch } from 'vue'
 import loadingImage from '../../../assets/loading.gif'
 import translate from '../../../utils/translate'
 import TranslateServiceEnum from '../../../../../common/enums/TranslateServiceEnum'
@@ -257,13 +257,11 @@ window.api[getTranslateServiceBackEventName(props.translateService)]((res) => {
     }
     translatedResultContent.value += translatedResultContentTemp
     showResult.value = true
-    adjustTextareaHeight()
     return
   }
   translatedResultContent.value = translatedResultContentTemp
   showResult.value = true
   isResultLoading.value = false
-  adjustTextareaHeight()
 
   copySpecialResultShow.value = isEnglish(translatedResultContentTemp)
   copyCamelCaseResultStatus.value = cacheGet('copyCamelCaseResultStatus') === YesNoEnum.Y
@@ -347,46 +345,43 @@ const clearTranslatedResultContentEvent = (): void => {
   setTranslatedResultContent('')
 }
 
+/**
+ * 校准翻译结果容器高度
+ * 高度由 el-input autosize 计算 这里只在其计算偏小（内容超出）时补足 避免结果尾部被遮挡
+ */
 const doAdjustTextareaHeight = (): void => {
   const textarea = translatedResultContentRef.value?.ref
   if (isNull(textarea)) {
     return
   }
-  const blockLayer = textarea.closest('.block-layer') as HTMLElement | null
-  const prevScrollTop = blockLayer ? blockLayer.scrollTop : 0
-  // 设置el-textarea的高度为自适应高度并隐藏内部多余滚动条
-  textarea.style.overflowY = 'hidden'
-  textarea.style.height = 'auto'
-  textarea.style.height = textarea.scrollHeight + 'px'
-  // 若外层滚动条出现引起宽度缩小、文本二次换行，再修正一次高度
   if (textarea.scrollHeight > textarea.clientHeight) {
-    textarea.style.height = textarea.scrollHeight + 'px'
+    const borderHeight = textarea.offsetHeight - textarea.clientHeight
+    textarea.style.height = textarea.scrollHeight + borderHeight + 'px'
   }
-  if (blockLayer && prevScrollTop > 0) {
-    blockLayer.scrollTop = prevScrollTop
-  }
-  window.api.windowHeightChangeEvent()
 }
+
+let adjustFrame = 0
+let adjustTimer: ReturnType<typeof setTimeout> | null = null
 
 /**
  * 重新计算翻译结果容器高度
  */
 const adjustTextareaHeight = (): void => {
-  if (isNull(translatedResultContent.value)) {
-    return
-  }
-  nextTick(() => {
-    nextTick(() => {
+  // 等待 Vue 与 el-input 完成本轮渲染后再校准 同一帧内多次触发只执行一次
+  if (!adjustFrame) {
+    adjustFrame = requestAnimationFrame(() => {
+      adjustFrame = 0
       doAdjustTextareaHeight()
     })
-    setTimeout(() => {
-      doAdjustTextareaHeight()
-    }, 100)
-    // 等待 el-collapse-transition 展开动画结束后再次校准高度
-    setTimeout(() => {
-      doAdjustTextareaHeight()
-    }, 330)
-  })
+  }
+  // 等待 el-collapse-transition 展开动画结束后再次校准高度
+  if (adjustTimer) {
+    clearTimeout(adjustTimer)
+  }
+  adjustTimer = setTimeout(() => {
+    adjustTimer = null
+    doAdjustTextareaHeight()
+  }, 330)
 }
 
 /**

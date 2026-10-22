@@ -125,11 +125,8 @@ class GlobalWin {
   static mainWinShow(): void {
     const translateShowPositionType = StoreService.configGet('translateShowPositionType')
     if (TranslateShowPositionEnum.LAST_TIME === translateShowPositionType) {
-      WinEvent.updateWinSize(
-        GlobalWin.mainWin,
-        GlobalWin.mainWin.getSize()[0],
-        GlobalWin.mainWin.getSize()[1]
-      )
+      // 保留上次的上移记录 内容变少后窗口可移回原位置
+      GlobalWin.mainWinFitWorkArea(false)
       GlobalWin.winShow(GlobalWin.mainWin)
       this.mainOrOcrWinShowCallback()
     } else if (TranslateShowPositionEnum.FOLLOW_MOUSE === translateShowPositionType) {
@@ -137,11 +134,7 @@ class GlobalWin {
       const { x, y } = screen.getCursorScreenPoint()
       // 设置坐标的同时设置宽高 否则在多显示器且显示器之间缩放比例不一致的情况下来回切换会导致悬浮球显示错位
       GlobalWin.mainWin.setBounds({ x: x, y: y + 11 })
-      WinEvent.updateWinSize(
-        GlobalWin.mainWin,
-        GlobalWin.mainWin.getSize()[0],
-        GlobalWin.mainWin.getSize()[1]
-      )
+      GlobalWin.mainWinFitWorkArea()
       GlobalWin.winShow(GlobalWin.mainWin)
       this.mainOrOcrWinShowCallback()
     } else if (TranslateShowPositionEnum.FROM_TOP === translateShowPositionType) {
@@ -154,11 +147,7 @@ class GlobalWin {
       const y = activeBounds.y + ((activeBounds.height - 339) / 2) * ((fromTopOfWindowPercentage * 2) / 100)
       try {
         GlobalWin.mainWin.setPosition(Math.floor(x), Math.floor(y))
-        WinEvent.updateWinSize(
-          GlobalWin.mainWin,
-          GlobalWin.mainWin.getSize()[0],
-          GlobalWin.mainWin.getSize()[1]
-        )
+        GlobalWin.mainWinFitWorkArea()
       } catch (e) {
         log.error('显示窗口设置位置异常', {
           x,
@@ -170,6 +159,19 @@ class GlobalWin {
       GlobalWin.winShow(GlobalWin.mainWin)
       this.mainOrOcrWinShowCallback()
     }
+  }
+
+  /**
+   * 主窗口重新定位后 按所在显示器工作区校正窗口高度与位置
+   *
+   * @param resetShift 是否清除之前因底边越界上移的记录
+   */
+  static mainWinFitWorkArea(resetShift = true): void {
+    if (resetShift) {
+      WinEvent.resetWinShift(GlobalWin.mainWin)
+    }
+    const [width, height] = GlobalWin.mainWin.getSize()
+    WinEvent.updateWinSize(GlobalWin.mainWin, width, height)
   }
 
   /**
