@@ -83,6 +83,41 @@
 
           <el-form-item
             v-if='translateServiceThis.type === TranslateServiceEnum.OPEN_AI'
+            label='自定义功能'
+          >
+            <div style='width: 100%'>
+              <div v-for='action in translateServiceThis.customActions' :key='action.id'>
+                <span>{{ action.name }}</span>
+                <el-button text size='small' @click='customActionDraft = { ...action }'>编辑</el-button>
+                <el-button text size='small' @click='deleteCustomAction(action.id)'>删除</el-button>
+              </div>
+              <template v-if='customActionDraft'>
+                <el-input
+                  v-model='customActionDraft.name'
+                  placeholder='功能名称，例如：提取要点'
+                  maxlength='40'
+                />
+                <el-input
+                  v-model='customActionDraft.prompt'
+                  type='textarea'
+                  :autosize='{ minRows: 2, maxRows: 8 }'
+                  placeholder='输入提示词'
+                  spellcheck='false'
+                  style='margin-top: 5px'
+                />
+                <span class='form-switch-span'>
+                  支持 {{ '{' + '{from}' + '}' }}（源语言）和 {{ '{' + '{text}' + '}' }}（原文）。未填写原文变量时，原文会自动追加。
+                </span>
+                <el-button plain size='small' @click='saveCustomAction'>保存功能</el-button>
+                <el-button text size='small' @click='customActionDraft = null'>取消</el-button>
+              </template>
+              <el-button v-else plain size='small' @click='addCustomAction'>新增功能</el-button>
+            </div>
+            <span class='form-switch-span'>启用此翻译源后，可在翻译窗口右侧的结果菜单选择自定义功能。</span>
+          </el-form-item>
+
+          <el-form-item
+            v-if='translateServiceThis.type === TranslateServiceEnum.OPEN_AI'
             label='请求地址'
           >
             <el-input
@@ -293,7 +328,7 @@
   </div>
 </template>
 <script setup lang='ts'>
-import { ref } from 'vue'
+import { ref, watch } from 'vue'
 import draggable from 'vuedraggable'
 import { Minus, Plus } from '@element-plus/icons-vue'
 
@@ -312,6 +347,8 @@ import {
   OpenAIModelEnum,
   OpenAIReasoningEffortList
 } from '../../../../../../common/enums/OpenAIModelEnum'
+import type { OpenAICustomAction } from '../../../../../../common/channel/translate/info/OpenAIInfo'
+import { random } from '../../../../../../common/utils/strUtil'
 
 // 翻译服务验证状态
 const checkIngStatus = ref(false)
@@ -436,6 +473,45 @@ const translateServiceList = ref([...translateServiceMap.value.values()])
 const translateServiceThis = ref()
 // 设置当前选中项默认为第一个翻译服务
 selectOneServiceThis()
+
+const customActionDraft = ref<OpenAICustomAction | null>(null)
+watch(() => translateServiceThis.value?.id, () => {
+  customActionDraft.value = null
+})
+
+const addCustomAction = (): void => {
+  customActionDraft.value = { id: random(), name: '', prompt: '' }
+}
+
+const saveCustomAction = (): void => {
+  const draft = customActionDraft.value
+  if (!draft) return
+  const name = draft.name.trim()
+  const prompt = draft.prompt.trim()
+  if (!name || !prompt) {
+    ElMessageExtend.warning('请输入功能名称和提示词')
+    return
+  }
+  const actions: OpenAICustomAction[] = translateServiceThis.value.customActions ?? []
+  if (actions.some((action) => action.id !== draft.id && action.name === name)) {
+    ElMessageExtend.warning('此功能名称已存在')
+    return
+  }
+  const action = { id: draft.id, name, prompt }
+  translateServiceThis.value.customActions = actions.some(({ id }) => id === action.id)
+    ? actions.map((previous) => (previous.id === action.id ? action : previous))
+    : [...actions, action]
+  openAIAdvancedInfoChange()
+  customActionDraft.value = null
+}
+
+const deleteCustomAction = (id: string): void => {
+  translateServiceThis.value.customActions = translateServiceThis.value.customActions.filter(
+    (action: OpenAICustomAction) => action.id !== id
+  )
+  if (customActionDraft.value?.id === id) customActionDraft.value = null
+  openAIAdvancedInfoChange()
+}
 
 /**
  * 选择翻译服务

@@ -8,6 +8,7 @@ import { commonError } from '../utils/RequestUtil'
 import { OpenAIStatusEnum } from '../../../common/enums/OpenAIStatusEnum'
 import { v4 as uuidv4 } from 'uuid'
 import { EventStreamContentType, fetchEventSource } from '@fortaine/fetch-event-source'
+import { ThinkBlockFilter } from './ThinkBlockFilter'
 
 export class QuoteProcessor {
   private quote: string
@@ -194,7 +195,7 @@ class AzureOpenAIChannelRequest {
    *
    * @param info            翻译信息
    */
-  static openaiTranslate = async (info): Promise<void> => {
+  static openaiTranslate = async (info, signal: AbortSignal): Promise<void> => {
     const isCheckRequest = false
     const { data, quoteProcessor } = AzureOpenAIChannelRequest.buildOpenAIRequest(
       info,
@@ -208,6 +209,23 @@ class AzureOpenAIChannelRequest {
       )
     )
     let text = ''
+    const thinkFilter = new ThinkBlockFilter()
+    let failed = false
+    const appendResult = (content: string): void => {
+      const result = quoteProcessor.processText(content)
+      if (!result) return
+      text += result
+      window.api['agentApiTranslateCallback'](
+        R.okD(new AgentTranslateCallbackVo(info, { code: OpenAIStatusEnum.ING, content: result }))
+      )
+    }
+    const reportError = (error): void => {
+      if (failed || signal.aborted) return
+      failed = true
+      window.api['agentApiTranslateCallback'](
+        R.errorD(new AgentTranslateCallbackVo(info, { code: OpenAIStatusEnum.ERROR, error }))
+      )
+    }
     await fetchEventSource(
       info.endpoint +
         '/openai/deployments/' +
@@ -215,74 +233,37 @@ class AzureOpenAIChannelRequest {
         '/chat/completions?api-version=2023-05-15',
       {
         method: 'POST',
+        signal,
         body: JSON.stringify(data),
         headers: {
           'Content-Type': 'application/json',
           'api-key': `${info.appKey}`
         },
         async onopen(response) {
-          if (
-            response.ok &&
-            response.headers.get('content-type').indexOf(EventStreamContentType) !== -1
-          ) {
-            return // everything's good
-          } else {
-            window.api.logInfoEvent('[AzureOpenAI翻译事件] - error 连接失败 :', {
-              status: response.status,
-              statusText: response.statusText
-            })
-            window.api['agentApiTranslateCallback'](
-              R.errorD(
-                new AgentTranslateCallbackVo(info, {
-                  code: OpenAIStatusEnum.ERROR,
-                  error: '连接失败'
-                })
-              )
-            )
+          if (response.ok && response.headers.get('content-type')?.includes(EventStreamContentType)) {
+            return
           }
+          throw new Error(`连接失败 [${response.status}] ${response.statusText}`)
         },
         onmessage(msg) {
-          // console.log('value = ', msg.data)
-          const value = msg.data
+          if (failed || signal.aborted) return
           try {
-            const dataArray = value.split('data: ')
-            dataArray.forEach((data) => {
-              data = data.trim().replace(/data:/g, '')
-              if (isNull(data) || data === '[DONE]') {
-                return
-              }
-              data = JSON.parse(data)
-              if (isNotNull(data['error'])) {
-                window.api['agentApiTranslateCallback'](
-                  R.errorD(
-                    new AgentTranslateCallbackVo(info, {
-                      code: OpenAIStatusEnum.ERROR,
-                      error: data
-                    })
-                  )
-                )
-                return
-              }
-              let content = data['choices'][0]['delta']['content']
-              if (isNull(content)) {
-                return
-              }
-              content = quoteProcessor.processText(content)
-              text += content
-              window.api['agentApiTranslateCallback'](
-                R.okD(
-                  new AgentTranslateCallbackVo(info, {
-                    code: OpenAIStatusEnum.ING,
-                    content: content
-                  })
-                )
-              )
-            })
+            const value = msg.data.trim()
+            if (!value || value === '[DONE]') return
+            const data = JSON.parse(value)
+            if (data.error) {
+              reportError(data)
+              return
+            }
+            const content = data.choices?.[0]?.delta?.content
+            if (typeof content === 'string') appendResult(thinkFilter.push(content))
           } catch (e) {
             window.api.logErrorEvent('[AzureOpenAI翻译事件] - parse error : ', text, msg)
           }
         },
         onclose() {
+          if (failed || signal.aborted) return
+          appendResult(thinkFilter.finish())
           window.api['agentApiTranslateCallback'](
             R.okD(
               new AgentTranslateCallbackVo(info, {
@@ -293,15 +274,7 @@ class AzureOpenAIChannelRequest {
           window.api.logInfoEvent('[AzureOpenAI翻译事件] - 响应报文 : ', text)
         },
         onerror(err) {
-          window.api.logInfoEvent('[AzureOpenAI翻译事件] - error {}', err)
-          window.api['agentApiTranslateCallback'](
-            R.errorD(
-              new AgentTranslateCallbackVo(info, {
-                code: OpenAIStatusEnum.ERROR,
-                error: err
-              })
-            )
-          )
+          reportError(err instanceof Error ? err.message : String(err))
           throw err
         }
       }

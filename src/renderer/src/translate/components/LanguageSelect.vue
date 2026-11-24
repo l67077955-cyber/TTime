@@ -57,21 +57,21 @@
     <el-collapse-transition>
       <div v-show="showLanguageResult">
         <div class="language-search">
-          <el-input v-model="languageSearchResult" placeholder="输入语言名称" />
+          <el-input v-model="languageSearchResult" placeholder="搜索语言或功能" />
         </div>
         <div class="language-list-block none-select function-tools-block">
-          <template v-for="(language, index) in languageResultList" :key="index">
+          <template v-for="language in languageResultList" :key="language.actionId ?? language.languageName">
             <a
               class="language-block none-select function-tools"
               :class="{
-                'language-active': resultLanguageSelect.languageName === language.languageName
+                'language-active': isSameSelection(resultLanguageSelect, language)
               }"
               @click="resultLanguageSelectClick(language)"
             >
               <div class="language-name none-select">{{ language.languageName }}</div>
               <div class="language-logo-block none-select">
                 <template v-for="(service, indexTwo) in language.serviceList" :key="indexTwo">
-                  <img class="language-logo none-select" :src="service.logo" />
+                  <img class="language-logo none-select" :src="service.logo" :title="service.name" />
                 </template>
               </div>
             </a>
@@ -83,11 +83,11 @@
 </template>
 
 <script setup lang="ts">
-import { initLanguageList } from './channel/language/ChannelLanguage'
-import { ref, watch } from 'vue'
+import { getCustomResultActions, initLanguageList } from './channel/language/ChannelLanguage'
+import { computed, ref } from 'vue'
 import { cacheGet, cacheSet } from '../../utils/cacheUtil'
 import LanguageEnum from '../../enums/LanguageEnum'
-import { isNull } from '../../../../common/utils/validate'
+import { OpenAIModelEnum } from '../../../../common/enums/OpenAIModelEnum'
 
 const languageAuto = {
   languageType: LanguageEnum.AUTO,
@@ -102,8 +102,7 @@ if (undefined === cacheGet('resultLanguage')) {
 }
 
 const languageList = ref([])
-const languageInputList = ref([])
-const languageResultList = ref([])
+const customActions = ref([])
 const showLanguageInput = ref(false)
 const showLanguageResult = ref(false)
 const languageSearchInput = ref('')
@@ -114,17 +113,23 @@ const inputLanguageSelect = ref(cacheGet('inputLanguage'))
 // 结果框当前选择的语言 默认为自动识别
 const resultLanguageSelect = ref(cacheGet('resultLanguage'))
 
-/**
- * 翻译语言转换点击事件
- */
-const insideInitLanguageList = (): void => {
-  languageList.value = [languageAuto, ...initLanguageList()]
-  languageInputList.value = languageList.value
-  languageResultList.value = languageList.value
+const isSameSelection = (current, option): boolean => {
+  if (current.actionId || option.actionId) {
+    return current.actionId === option.actionId && current.serviceId === option.serviceId
+  }
+  return current.languageName === option.languageName
 }
 
-// 初始化翻译语言加载
-insideInitLanguageList()
+const isInputLanguage = (option): boolean =>
+  !option.actionId && !OpenAIModelEnum.FUNCTION_LANGUAGE_TYPE_LIST.includes(option.languageName)
+const inputOptions = computed(() => languageList.value.filter(isInputLanguage))
+const resultOptions = computed(() => [languageAuto, ...customActions.value, ...languageList.value.slice(1)])
+const languageInputList = computed(() =>
+  inputOptions.value.filter((option) => option.languageName.includes(languageSearchInput.value))
+)
+const languageResultList = computed(() =>
+  resultOptions.value.filter((option) => option.languageName.includes(languageSearchResult.value))
+)
 
 /**
  * 显示选择输入翻译语言
@@ -168,6 +173,7 @@ const resultLanguageSelectClick = (language: object): void => {
 const clickLanguageExchange = (): void => {
   const inputLanguageSelect = cacheGet('inputLanguage')
   const resultLanguageSelect = cacheGet('resultLanguage')
+  if (!isInputLanguage(resultLanguageSelect)) return
   inputLanguageSelectClick(resultLanguageSelect)
   resultLanguageSelectClick(inputLanguageSelect)
 }
@@ -175,42 +181,18 @@ const clickLanguageExchange = (): void => {
 /**
  * 更新翻译服务事件
  */
-window.api.updateTranslateServiceEvent(() => {
-  // 加载翻译服务
-  insideInitLanguageList()
-  // 重置初始化语言选择
-  inputLanguageSelectClick(languageAuto)
-  resultLanguageSelectClick(languageAuto)
-})
-
-/**
- * 语言搜索输入监听
- */
-watch(languageSearchInput, (newVal) => {
-  languageInputList.value = languageSearch(newVal)
-})
-
-/**
- * 结果语言搜索输入监听
- */
-watch(languageSearchResult, (newVal) => {
-  languageResultList.value = languageSearch(newVal)
-})
-
-/**
- * 语言搜索
- *
- * @param searchLanguageName 语言名称
- * @return 搜索到的语言
- */
-const languageSearch = (searchLanguageName): any[] => {
-  if (isNull(searchLanguageName)) {
-    return languageList.value
-  }
-  return languageList.value.filter(
-    (obj) => obj.languageName && obj.languageName.includes(searchLanguageName)
+const refreshLanguageOptions = (): void => {
+  languageList.value = [languageAuto, ...initLanguageList()]
+  customActions.value = getCustomResultActions()
+  inputLanguageSelectClick(
+    inputOptions.value.find((option) => isSameSelection(inputLanguageSelect.value, option)) ?? languageAuto
+  )
+  resultLanguageSelectClick(
+    resultOptions.value.find((option) => isSameSelection(resultLanguageSelect.value, option)) ?? languageAuto
   )
 }
+refreshLanguageOptions()
+window.api.updateTranslateServiceEvent(refreshLanguageOptions)
 </script>
 
 <style lang="scss" scoped>

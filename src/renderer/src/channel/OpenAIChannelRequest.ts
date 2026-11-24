@@ -9,6 +9,7 @@ import { OpenAIStatusEnum } from '../../../common/enums/OpenAIStatusEnum'
 import { v4 as uuidv4 } from 'uuid'
 import { OpenAIModelEnum } from '../../../common/enums/OpenAIModelEnum'
 import { EventStreamContentType, fetchEventSource } from '@fortaine/fetch-event-source'
+import { ThinkBlockFilter } from './ThinkBlockFilter'
 
 export class QuoteProcessor {
   private quote: string
@@ -231,6 +232,16 @@ class OpenAIChannelRequest {
         ]
       }
     }
+    if (!isCheckRequest && info.customActionPrompt) {
+      let prompt = OpenAIChannelRequest.fillPromptVariables(info.customActionPrompt, info)
+      if (!info.customActionPrompt.includes('{{text}}')) {
+        prompt += '\n\n' + info.translateContent
+      }
+      messages = [
+        { role: 'system', content: 'Follow the requested text operation and return its result.' },
+        { role: 'user', content: prompt }
+      ]
+    }
     return {
       data: {
         model: info.model,
@@ -289,7 +300,7 @@ class OpenAIChannelRequest {
    *
    * @param info            翻译信息
    */
-  static openaiTranslate = async (info): Promise<void> => {
+  static openaiTranslate = async (info, signal: AbortSignal): Promise<void> => {
     const isCheckRequest = false
     const { data, quoteProcessor } = OpenAIChannelRequest.buildOpenAIRequest(info, isCheckRequest)
     window.api['agentApiTranslateCallback'](
@@ -300,12 +311,13 @@ class OpenAIChannelRequest {
       )
     )
     let text = ''
+    const thinkFilter = new ThinkBlockFilter()
     // 是否收到了思考内容
     let hasReasoning = false
     // 是否已经回调过错误信息
     let errorStatus = false
     const errorCallback = (error): void => {
-      if (errorStatus) {
+      if (errorStatus || signal.aborted) {
         return
       }
       errorStatus = true
@@ -318,9 +330,34 @@ class OpenAIChannelRequest {
         )
       )
     }
+    const appendResult = (content: string): void => {
+      if (!content || errorStatus || signal.aborted) return
+      const result = info.customActionPrompt ? content : quoteProcessor.processText(content)
+      if (!result) return
+      text += result
+      window.api['agentApiTranslateCallback'](
+        R.okD(new AgentTranslateCallbackVo(info, { code: OpenAIStatusEnum.ING, content: result }))
+      )
+    }
+    const finishResult = (): void => {
+      if (errorStatus || signal.aborted) return
+      appendResult(thinkFilter.finish())
+      if (!text.trim()) {
+        errorCallback(
+          hasReasoning || thinkFilter.sawReasoning
+            ? '模型只返回了思考内容，没有返回结果，请检查思考参数 / 额外参数设置'
+            : '模型没有返回任何内容，请检查模型名称、请求地址是否正确'
+        )
+        return
+      }
+      window.api['agentApiTranslateCallback'](
+        R.okD(new AgentTranslateCallbackVo(info, { code: OpenAIStatusEnum.END }))
+      )
+    }
     try {
       await fetchEventSource(buildChatCompletionsUrl(info.requestUrl), {
         method: 'POST',
+        signal,
         body: JSON.stringify(data),
         headers: {
           'Content-Type': 'application/json',
@@ -333,23 +370,15 @@ class OpenAIChannelRequest {
             return // everything's good
           }
           const body = await response.text().catch(() => '')
+          if (signal.aborted) throw new FatalError()
           // 部分服务即使请求了流式输出也会直接返回完整的 JSON 结果
           if (response.ok) {
             try {
-              const content = JSON.parse(body)?.choices?.[0]?.message?.content
-              if (isNotNull(content)) {
-                text = quoteProcessor.processText(content)
-                window.api['agentApiTranslateCallback'](
-                  R.okD(
-                    new AgentTranslateCallbackVo(info, {
-                      code: OpenAIStatusEnum.ING,
-                      content: text
-                    })
-                  )
-                )
-                window.api['agentApiTranslateCallback'](
-                  R.okD(new AgentTranslateCallbackVo(info, { code: OpenAIStatusEnum.END }))
-                )
+              const message = JSON.parse(body)?.choices?.[0]?.message
+              if (message) {
+                hasReasoning = Boolean(message.reasoning_content || message.reasoning)
+                if (typeof message.content === 'string') appendResult(thinkFilter.push(message.content))
+                finishResult()
                 errorStatus = true
                 throw new FatalError()
               }
@@ -374,65 +403,25 @@ class OpenAIChannelRequest {
           throw new FatalError(msg)
         },
         onmessage(msg) {
-          const value = msg.data
+          if (signal.aborted || errorStatus) return
           try {
-            const dataArray = value.split('data: ')
-            dataArray.forEach((data) => {
-              data = data.trim().replace(/data:/g, '')
-              if (isNull(data) || data === '[DONE]') {
-                return
-              }
-              data = JSON.parse(data)
-              if (isNotNull(data['error'])) {
-                errorCallback(data)
-                return
-              }
-              const delta = data['choices']?.[0]?.['delta']
-              if (isNull(delta)) {
-                return
-              }
-              if (isNotNull(delta['reasoning_content']) || isNotNull(delta['reasoning'])) {
-                hasReasoning = true
-              }
-              let content = delta['content']
-              if (isNull(content)) {
-                return
-              }
-              content = quoteProcessor.processText(content)
-              text += content
-              window.api['agentApiTranslateCallback'](
-                R.okD(
-                  new AgentTranslateCallbackVo(info, {
-                    code: OpenAIStatusEnum.ING,
-                    content: content
-                  })
-                )
-              )
-            })
+            const value = msg.data.trim()
+            if (!value || value === '[DONE]') return
+            const data = JSON.parse(value)
+            if (data.error) {
+              errorCallback(data)
+              return
+            }
+            const delta = data.choices?.[0]?.delta
+            if (delta?.reasoning_content || delta?.reasoning) hasReasoning = true
+            if (typeof delta?.content === 'string') appendResult(thinkFilter.push(delta.content))
           } catch (e) {
             window.api.logErrorEvent('[OpenAI翻译事件] - parse error : ', text, msg)
           }
         },
         onclose() {
+          finishResult()
           window.api.logInfoEvent('[OpenAI翻译事件] - 响应报文 : ', text)
-          if (errorStatus) {
-            return
-          }
-          if (isNull(text.trim())) {
-            errorCallback(
-              hasReasoning
-                ? '模型只返回了思考内容，没有返回翻译结果，请检查思考参数 / 额外参数设置'
-                : '模型没有返回任何内容，请检查模型名称、请求地址是否正确'
-            )
-            return
-          }
-          window.api['agentApiTranslateCallback'](
-            R.okD(
-              new AgentTranslateCallbackVo(info, {
-                code: OpenAIStatusEnum.END
-              })
-            )
-          )
         },
         onerror(err) {
           window.api.logInfoEvent('[OpenAI翻译事件] - error {}', err)

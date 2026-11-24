@@ -73,12 +73,14 @@ const playSpeech = (text): void => {
  */
 const playSpeechNewAudioByService = (playSpeechService, text): void => {
   let url
+  // 文字需编码 否则 & # 等字符会截断请求参数
+  const encodedText = encodeURIComponent(text)
   if (playSpeechService === PlaySpeechServiceEnum.YOUDAO) {
-    url = 'https://dict.youdao.com/dictvoice?audio=' + text + '&le=zh'
+    url = 'https://dict.youdao.com/dictvoice?audio=' + encodedText + '&le=zh'
   } else if (playSpeechService === PlaySpeechServiceEnum.SOGOU) {
     url =
       'https://fanyi.sogou.com/reventondc/synthesis?text=' +
-      text +
+      encodedText +
       '&speed=1&lang=zh-CHS&from=translateweb&speaker=6'
   }
   playSpeechNewAudio(url)

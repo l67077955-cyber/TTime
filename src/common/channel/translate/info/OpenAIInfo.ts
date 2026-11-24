@@ -1,3 +1,9 @@
+export interface OpenAICustomAction {
+  id: string
+  name: string
+  prompt: string
+}
+
 export default {
   name: 'OpenAI翻译',
   // 是否需要秘钥
@@ -15,7 +21,8 @@ export default {
     // 自定义系统提示词 为空时使用内置提示词
     systemPrompt: '',
     // 自定义用户提示词 支持变量 {{from}} {{to}} {{text}} 为空时使用内置提示词
-    userPrompt: ''
+    userPrompt: '',
+    customActions: [] as OpenAICustomAction[]
   },
   // 翻译语言
   languageList: [

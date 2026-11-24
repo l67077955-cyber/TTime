@@ -1,8 +1,11 @@
 <template>
-  <div v-for="(translateService, key) in translateServiceMap.values()" :key="key">
+  <div
+    v-for="[serviceId, translateService] in translateServiceMap"
+    v-show="!selectedServiceId || selectedServiceId === serviceId"
+    :key="serviceId"
+  >
     <input-result-content-channel
-      :key="translateService.id"
-      :ref="setChannelRef"
+      :ref="(channel) => setChannelRef(serviceId, channel)"
       :translate-service="translateService"
     />
   </div>
@@ -15,7 +18,8 @@ import { ref } from 'vue'
 import { getTranslateServiceMapByUse } from '../../utils/translateServiceUtil'
 
 // 翻译结果框
-const channelRefs = ref([])
+const channelRefs = new Map()
+const selectedServiceId = ref<string>()
 // 获取缓存中的翻译服务list
 const translateServiceMap = ref()
 
@@ -23,8 +27,6 @@ const translateServiceMap = ref()
  * 加载翻译服务
  */
 const initTranslateServiceMap = (): void => {
-  // 翻译结果框
-  channelRefs.value = []
   // 获取缓存中的翻译服务list
   translateServiceMap.value = getTranslateServiceMapByUse()
 }
@@ -42,44 +44,21 @@ window.api.updateTranslateServiceEvent(() => {
 /**
  * 设置通道ref
  *
- * @param ref ref
+ * @param id 翻译服务ID
+ * @param channel 结果组件
  */
-const setChannelRef = (ref): void => {
-  if (ref) {
-    channelRefs.value.push(ref)
-  }
+const setChannelRef = (id, channel): void => {
+  if (channel) channelRefs.set(id, channel)
+  else channelRefs.delete(id)
 }
 
 /**
- * 设置翻译内容
- *
- * @param value 翻译内容
+ * 重置结果并开始当前翻译请求
  */
-const setTranslatedResultContent = (value): void => {
-  channelRefs.value.forEach((channel) => {
-    channel.setTranslatedResultContent(value)
-  })
-}
-
-/**
- * 设置显示翻译结果状态
- *
- * @param value 显示翻译结果
- */
-const setShowResult = (value): void => {
-  channelRefs.value.forEach((channel) => {
-    channel.setShowResult(value)
-  })
-}
-
-/**
- * 设置显示翻译加载中状态
- *
- * @param value 加载中状态
- */
-const setIsResultLoading = (value): void => {
-  channelRefs.value.forEach((channel) => {
-    channel.setIsResultLoading(value)
+const startRequest = (requestId: string, serviceId?: string): void => {
+  selectedServiceId.value = serviceId
+  channelRefs.forEach((channel, id) => {
+    channel.startRequest(!serviceId || serviceId === id ? requestId : undefined)
   })
 }
 
@@ -87,16 +66,15 @@ const setIsResultLoading = (value): void => {
  * 清空翻译结果内容事件
  */
 const clearTranslatedResultContentEvent = (): void => {
-  channelRefs.value.forEach((channel) => {
+  selectedServiceId.value = undefined
+  channelRefs.forEach((channel) => {
     channel.clearTranslatedResultContentEvent()
   })
 }
 
 defineExpose({
-  setTranslatedResultContent,
-  clearTranslatedResultContentEvent,
-  setShowResult,
-  setIsResultLoading
+  startRequest,
+  clearTranslatedResultContentEvent
 })
 </script>
 

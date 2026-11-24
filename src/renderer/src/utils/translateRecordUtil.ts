@@ -12,6 +12,10 @@ export const updateTranslateRecord = (translateVo): void => {
   let requestId = translateVo['requestId']
   // 翻译记录
   const translateRecordList = cacheGetByType(StoreTypeEnum.HISTORY_RECORD, 'translateRecordList')
+  // 关闭翻译记录后没有记录列表 无需更新
+  if (isNull(translateRecordList)) {
+    return
+  }
   for (let i = 0; i < translateRecordList.length; i++) {
     const translateRecord = translateRecordList[i]
     if (translateRecord['requestId'] === requestId) {

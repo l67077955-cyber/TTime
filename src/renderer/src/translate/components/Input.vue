@@ -17,6 +17,7 @@
           placeholder="请输入单词或文字"
           @input="translateContentInputEvent"
           @keydown="translateChange"
+          @paste="translateContentPasteEvent"
           @focus="translateContentFocus"
         >
         </el-input>
@@ -63,6 +64,8 @@ import TranslateRecordVo from '../../../../common/class/TranslateRecordVo'
 import TranslateServiceRecordVo from '../../../../common/class/TranslateServiceRecordVo'
 import { StoreTypeEnum } from '../../../../common/enums/StoreTypeEnum'
 import { updateTranslateRecordList } from '../../utils/translateRecordUtil'
+import { setActiveTranslationRequest } from '../../channel/ChannelRequest'
+import type { OpenAICustomAction } from '../../../../common/channel/translate/info/OpenAIInfo'
 
 // 加载loading
 const loadingImageSrc = ref(loadingImage)
@@ -72,7 +75,7 @@ const isScreenshotEnd = ref(false)
 const translateContent = ref('')
 // 翻译输入框ref
 const translateContentInputRef = ref()
-const emit = defineEmits(['show-result-event', 'is-result-loading-event'])
+const emit = defineEmits(['start-request-event'])
 
 watch(translateContent, () => {
   // 页面高度改变监听
@@ -134,54 +137,29 @@ const textWriteShearPlate = (text): void => {
 /**
  * 翻译触发
  */
-const translateChange = async (event): Promise<void> => {
-  // console.log('event =', event)
-  // 按下 ctrl/command + 回车 = 换行
-  if (event.keyCode === 13 && (event.ctrlKey || event.metaKey)) {
-    // 换行
-    translateContent.value += '\n'
+const translateChange = (event: KeyboardEvent): void => {
+  // 按键先于粘贴事件触发 清除上次未写入内容的粘贴标记（如剪贴板为空）
+  pasteTranslatePending = false
+  if (event.key !== 'Enter' || event.isComposing || event.keyCode === 229) return
+  event.preventDefault()
+  if (event.repeat) return
+  if (event.ctrlKey || event.metaKey) {
+    insertLineBreakAtCursor(event.target)
     return
-  }
-
-  const inputTranslationAutoStatus = cacheGet('inputTranslationAutoStatus')
-
-  // 文本粘贴快捷键
-  const isCtrlV =
-    (event.ctrlKey || event.metaKey) &&
-    event.keyCode === 86 &&
-    inputTranslationAutoStatus === YesNoEnum.N
-
-  // keyCode 13 = 回车
-  if (event.keyCode !== 13 && !isCtrlV) {
-    return
-  }
-
-  // 如果开启了输入自动翻译模式 则回车翻译功能关闭
-  if (event.keyCode === 13 && inputTranslationAutoStatus === YesNoEnum.Y) {
-    event.preventDefault()
-    return
-  }
-
-  // 延时100毫秒
-  if (isCtrlV) {
-    await new Promise((resolve) => setTimeout(resolve, 100))
   }
 
   if (isContentNull(translateContent.value)) {
     ElMessageExtend.warning('内容不能为空')
-    event.preventDefault()
     return
   }
   translateFun()
-  // 阻止浏览器默认换行操作
-  event.preventDefault()
 }
 
 /**
  * 翻译
  */
 const translateFun = (): void => {
-  emit('show-result-event', false)
+  clearTimeout(translateContentInputTimeout)
   // 翻译内容
   let translateContentDealWith = translateContent.value
   window.api.logInfoEvent('[翻译事件] - 翻译内容 : ', translateContentDealWith)
@@ -205,7 +183,7 @@ const translateFun = (): void => {
   if (languageInputType === LanguageEnum.AUTO) {
     // 自动检测输入文字的语言
     const languageName = getLanguageNameConversion(translateContentDealWith)
-    inputLanguage = findLanguageByLanguageName(languageName)
+    inputLanguage = findLanguageByLanguageName(languageName) ?? { languageName }
   }
   // 获取当前默认翻译结果文字语言
   let resultLanguage = cacheGet('resultLanguage')
@@ -215,10 +193,8 @@ const translateFun = (): void => {
     // 自动检测翻译结果文字语言
     // 根据输入的语言类型获取翻译结果的语言
     const languageName = getLanguageResultNameConversion(translateContentDealWith)
-    resultLanguage = findLanguageByLanguageName(languageName)
+    resultLanguage = findLanguageByLanguageName(languageName) ?? { languageName }
   }
-  // 设置显示翻译加载中状态
-  emit('is-result-loading-event', true)
   // 应用翻译使用
   window.api.ttimeApiTranslateUse()
   // 获取当前正在使用的翻译源
@@ -229,62 +205,65 @@ const translateFun = (): void => {
     inputLanguage,
     resultLanguage
   })
-  const requestMap = new Map()
+  const requestId = translateRecordVo.requestId
+  setActiveTranslationRequest(requestId)
+  emit('start-request-event', requestId, resultLanguage.serviceId)
+  const requests = []
   // 遍历当前正在使用的翻译源
   for (const translateService of translateServiceMapData.values()) {
     // 翻译源类型
     const type = translateService.type
+    if (resultLanguage.serviceId && resultLanguage.serviceId !== translateService.id) continue
+    const requestInfo = { requestId, id: translateService.id }
+    const action = resultLanguage.actionId
+      ? translateService.customActions?.find((item: OpenAICustomAction) => item.id === resultLanguage.actionId)
+      : undefined
     // 如果不为自动识别 则从翻译源对应的文字语言中找到对应的语言代码
     const inputServiceLanguage = inputLanguage?.serviceList?.find((service) => {
       return service.type === translateService.type
     })
-    if (isNull(inputServiceLanguage)) {
+    if (!action && isNull(inputServiceLanguage)) {
       // 此处校验是用于用户在使用多翻译源情况下 部分翻译源支持某种语言 而部分翻译源不支持
-      window.api.apiTranslateResultMsgCallbackEvent(translateService.type, '不支持翻译当前语言')
+      window.api.apiTranslateResultMsgCallbackEvent(type, requestInfo, '不支持翻译当前语言')
       continue
     }
     // 输入文字语言类型
-    const languageInputTypeRequest = inputServiceLanguage.languageType
+    const languageInputTypeRequest = inputServiceLanguage?.languageType ?? inputLanguage.languageName
 
     const resultServiceLanguage = resultLanguage?.serviceList?.find((service) => {
       return service.type === translateService.type
     })
-    if (isNull(resultServiceLanguage)) {
-      window.api.apiTranslateResultMsgCallbackEvent(translateService.type, '不支持翻译当前语言结果')
+    if (!action && isNull(resultServiceLanguage)) {
+      window.api.apiTranslateResultMsgCallbackEvent(type, requestInfo, '不支持翻译当前语言结果')
       continue
     }
     // 翻译结果语言类型
-    const languageResultTypeRequest = resultServiceLanguage.languageType
+    const languageResultTypeRequest = action?.name ?? resultServiceLanguage.languageType
 
-    let info = buildTranslateRequestInfo(
-      translateContentDealWith,
-      languageInputTypeRequest,
-      languageResultTypeRequest
-    )
-    info = {
-      ...info,
-      requestId: translateRecordVo.requestId,
-      id: translateService.id,
+    const info = {
+      ...buildTranslateRequestInfo(translateContentDealWith, languageInputTypeRequest, languageResultTypeRequest),
+      ...requestInfo,
       appId: translateService.appId,
-      appKey: translateService.appKey
+      appKey: translateService.appKey,
+      customActionPrompt: action?.prompt
     }
     const defaultInfo = TranslateServiceBuilder.getServiceConfigInfo(type).defaultInfo
     if (isNotNull(defaultInfo)) {
       Object.keys(defaultInfo).forEach((key) => {
-        info[key] = translateService[key]
+        if (key !== 'customActions') info[key] = translateService[key]
       })
     }
-    requestMap.set(type, info)
+    requests.push({ type, info })
   }
   // 翻译记录状态
   const translateHistoryStatus = cacheGet('translateHistoryStatus') === YesNoEnum.Y
   if (translateHistoryStatus) {
     // 构建翻译记录信息
     const translateServiceRecordList = []
-    requestMap.forEach((value, key) => {
+    requests.forEach(({ type, info }) => {
       const serviceRecordVo = new TranslateServiceRecordVo()
-      serviceRecordVo.translateServiceType = key
-      serviceRecordVo.translateServiceId = value.id
+      serviceRecordVo.translateServiceType = type
+      serviceRecordVo.translateServiceId = info.id
       serviceRecordVo.translateStatus = false
       translateServiceRecordList.push(serviceRecordVo)
     })
@@ -296,9 +275,9 @@ const translateFun = (): void => {
     updateTranslateRecordList(translateRecordList)
   }
   // 触发翻译
-  requestMap.forEach((value, key) => {
+  requests.forEach(({ type, info }) => {
     // 此处触发之后会异步回调到 *ApiTranslateCallbackEvent 方法中去执行
-    window.api.apiUniteTranslate(key, value)
+    window.api.apiUniteTranslate(type, info)
   })
 }
 
@@ -315,9 +294,44 @@ const isContentNull = (content): boolean => {
 let translateContentInputTimeout
 
 /**
+ * 在光标处插入换行 有选中文字时替换选中内容
+ *
+ * @param textarea 输入框
+ */
+const insertLineBreakAtCursor = (textarea): void => {
+  const content = translateContent.value
+  const start = textarea.selectionStart ?? content.length
+  const end = textarea.selectionEnd ?? content.length
+  translateContent.value = content.slice(0, start) + '\n' + content.slice(end)
+  nextTick(() => {
+    textarea.setSelectionRange(start + 1, start + 1)
+  })
+}
+
+// 粘贴后待翻译标记 粘贴的内容在 input 事件中才写入输入框
+let pasteTranslatePending = false
+
+/**
+ * 翻译内容粘贴事件
+ * 关闭输入自动翻译模式时 粘贴后立即翻译 不区分 Ctrl+V、Shift+Insert 等粘贴方式
+ */
+const translateContentPasteEvent = (): void => {
+  pasteTranslatePending = cacheGet('inputTranslationAutoStatus') === YesNoEnum.N
+}
+
+/**
  * 翻译内容输入事件
  */
 const translateContentInputEvent = (): void => {
+  if (pasteTranslatePending) {
+    pasteTranslatePending = false
+    if (isContentNull(translateContent.value)) {
+      ElMessageExtend.warning('内容不能为空')
+      return
+    }
+    translateFun()
+    return
+  }
   if (cacheGet('inputTranslationAutoStatus') === YesNoEnum.Y) {
     clearTimeout(translateContentInputTimeout)
     // 防抖时间为500毫秒
@@ -368,6 +382,8 @@ const setTranslateContent = (value): void => {
  * 清除翻译内容事件
  */
 const clearTranslatedContentEvent = (): void => {
+  clearTimeout(translateContentInputTimeout)
+  setActiveTranslationRequest()
   setTranslateContent('')
 }
 

@@ -19,7 +19,7 @@ class EcDictChannel implements ITranslateInterface {
       .then(async (res: any) => {
         log.info('[EcDict翻译事件] - 响应报文 : ', res)
         if (res.length <= 0) {
-          GlobalWin.mainWinSend(TranslateChannelFactory.callbackName(info.type), R.okT('未找到词'))
+          GlobalWin.mainWinSend(TranslateChannelFactory.callbackName(info.type), R.okIT(info, '未找到词'))
           return
         }
         const data = res[0]

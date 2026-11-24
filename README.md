@@ -105,6 +105,24 @@ npm run build:win:portable
 npm run build:mac
 ```
 
+### Linux 前端调试
+
+有桌面的 Linux 可以用 `npm run dev:linux` 启动 Electron 并热更新页面。默认按 Alt+Q 打开翻译窗口，F12 打开 DevTools。
+
+无桌面的服务器可以安装 Xvfb 和 xauth，再启动同一套界面。在 Chrome 的 `chrome://inspect` 中，将 `127.0.0.1:9222` 加入发现地址即可调试。从另一台电脑连接时，可用 SSH 转发该端口。以 root 启动 Electron 时，追加 `--noSandbox`。
+
+```sh
+xvfb-run -a npm run dev:linux -- --remoteDebuggingPort 9222
+```
+
+修改翻译界面后，可以在 Linux 上运行下面的回归测试。测试在 Xvfb 中打开真实 Electron 页面，通过本地模拟接口验证连续按 Enter、思考块过滤和自定义功能。配置与请求数据均隔离于日常使用的 TTime。
+
+```sh
+npm run test:renderer:linux
+```
+
+Windows 的安装、全局热键、划词取字及多屏截图行为仍需在 Windows 验证。
+
 ## 简单快速新增翻译/OCR源
 
 新增翻译/OCR源新增很简单，你只需要有一些JS/TS基础和接口联调能力就可以集成 ，以下以小牛翻译为例

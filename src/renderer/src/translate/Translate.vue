@@ -4,8 +4,7 @@
     <div class='block-layer'>
       <Input
         ref='translateInput'
-        @show-result-event='(value) => translatedResultInput.setShowResult(value)'
-        @is-result-loading-event='(value) => translatedResultInput.setIsResultLoading(value)'
+        @start-request-event='(requestId, serviceId) => translatedResultInput.startRequest(requestId, serviceId)'
         v-show='!hideTranslateInput'
       />
 
@@ -40,8 +39,8 @@ import { YesNoEnum } from '../../../common/enums/YesNoEnum'
 initTheme()
 
 // 翻译输入组件
-const translateInput = ref('')
-const translatedResultInput = ref('')
+const translateInput = ref()
+const translatedResultInput = ref()
 const hideTranslateInput = ref(false)
 const hideTranslateLanguage = ref(false)
 

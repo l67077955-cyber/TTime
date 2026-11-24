@@ -2,6 +2,8 @@ import {
   getTranslateServiceMapByUse,
   TranslateServiceBuilder
 } from '../../../../utils/translateServiceUtil'
+import TranslateServiceEnum from '../../../../../../common/enums/TranslateServiceEnum'
+import type { OpenAICustomAction } from '../../../../../../common/channel/translate/info/OpenAIInfo'
 
 const languageMap = new Map()
 
@@ -91,6 +93,18 @@ const initLanguageList = (): never[] => {
   return languageList
 }
 
+const getCustomResultActions = () =>
+  Array.from(getTranslateServiceMapByUse().values()).flatMap((service) =>
+    service['type'] === TranslateServiceEnum.OPEN_AI
+      ? (service['customActions'] ?? []).map((action: OpenAICustomAction) => ({
+          languageName: action.name,
+          actionId: action.id,
+          serviceId: service['id'],
+          serviceList: [{ ...service['serviceInfo'], name: service['serviceName'] }]
+        }))
+      : []
+  )
+
 /**
  * 根据语言名称查询语言信息
  *
@@ -102,4 +116,4 @@ const findLanguageByLanguageName = (languageName): object => {
   })
 }
 
-export { initLanguageList, findLanguageByLanguageName }
+export { initLanguageList, findLanguageByLanguageName, getCustomResultActions }

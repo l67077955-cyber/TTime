@@ -125,7 +125,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, watch } from 'vue'
+import { onUnmounted, ref, watch } from 'vue'
 import loadingImage from '../../../assets/loading.gif'
 import translate from '../../../utils/translate'
 import TranslateServiceEnum from '../../../../../common/enums/TranslateServiceEnum'
@@ -182,6 +182,8 @@ const copyCamelCaseResultStatus = ref(cacheGet('copyCamelCaseResultStatus') === 
 const copySnakeCaseResultStatus = ref(cacheGet('copySnakeCaseResultStatus') === YesNoEnum.Y)
 // 复制特殊结果显示
 const copySpecialResultShow = ref(false)
+// 当前翻译请求ID
+let currentRequestId: string | undefined
 
 /**
  * 显示翻译结果
@@ -236,20 +238,26 @@ const copySnakeCase = (text): void => {
 /**
  * 翻译回调 - 异步处理
  */
-window.api[getTranslateServiceBackEventName(props.translateService)]((res) => {
+const removeResultListener = window.api[getTranslateServiceBackEventName(props.translateService)]((res) => {
   const data = res.data
+  if (
+    !currentRequestId ||
+    data?.requestId !== currentRequestId ||
+    data.translateServiceId !== props.translateService['id']
+  ) {
+    return
+  }
   const translateList = data['translateList']
   const translatedResultContentTemp = translateList.join('\n')
   if (isStreamTranslateService()) {
     if (res.code === OpenAIStatusEnum.START) {
-      translatedResultContent.value = ''
       return
     }
     if (res.code === OpenAIStatusEnum.END) {
       translatedResultContent.value += translatedResultContentTemp
       showResult.value = true
       isResultLoading.value = false
-      copySpecialResultShow.value = isEnglish(translatedResultContentTemp)
+      copySpecialResultShow.value = isEnglish(translatedResultContent.value)
       data.translateList = [translatedResultContent.value]
       // 更新翻译记录
       updateTranslateRecord(data)
@@ -309,42 +317,25 @@ window.api[getTranslateServiceBackEventName(props.translateService)]((res) => {
     explainList: explainListDeal
   }
 })
+onUnmounted(removeResultListener)
 
 /**
- * 设置翻译内容
- *
- * @param value 翻译内容
+ * 重置结果并开始当前翻译请求
  */
-const setTranslatedResultContent = (value): void => {
-  translatedResultContent.value = value
-  adjustTextareaHeight()
-}
-
-/**
- * 设置显示翻译结果状态
- *
- * @param value 显示翻译结果
- */
-const setShowResult = (value): void => {
-  showResult.value = value
-}
-
-/**
- * 设置显示翻译加载中状态
- *
- * @param value 加载中状态
- */
-const setIsResultLoading = (value): void => {
-  isResultLoading.value = value
+const startRequest = (requestId?: string): void => {
+  currentRequestId = requestId
+  isResultLoading.value = Boolean(requestId)
+  showResult.value = false
+  translatedResultContent.value = ''
+  dictTranslatedResultExpand.value = {}
+  copySpecialResultShow.value = false
 }
 
 /**
  * 清空翻译结果内容事件
  */
 const clearTranslatedResultContentEvent = (): void => {
-  isResultLoading.value = false
-  showResult.value = false
-  setTranslatedResultContent('')
+  startRequest()
 }
 
 /**
@@ -427,10 +418,8 @@ window.api.winSizeUpdate(() => {
 })
 
 defineExpose({
-  setTranslatedResultContent,
-  clearTranslatedResultContentEvent,
-  setShowResult,
-  setIsResultLoading
+  startRequest,
+  clearTranslatedResultContentEvent
 })
 </script>
 

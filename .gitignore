@@ -46,6 +46,7 @@ hs_err_pid*
 /nbproject/private/
 /nbbuild/
 /dist/
+/windows-exe/
 /nbdist/
 /.nb-gradle/
 !**/src/main/**/build/
