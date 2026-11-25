@@ -387,8 +387,22 @@ const clearTranslatedContentEvent = (): void => {
   setTranslateContent('')
 }
 
+/**
+ * 切换翻译语言或功能后重新翻译
+ * 输入框为空时只中止进行中的翻译
+ */
+const retranslateEvent = (): void => {
+  clearTimeout(translateContentInputTimeout)
+  if (isContentNull(translateContent.value)) {
+    setActiveTranslationRequest()
+    return
+  }
+  translateFun()
+}
+
 defineExpose({
   getTranslateContent,
+  retranslateEvent,
   setTranslateContent,
   clearTranslatedContentEvent
 })

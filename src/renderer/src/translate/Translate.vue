@@ -10,6 +10,7 @@
 
       <language-select
         v-show='!hideTranslateLanguage'
+        @language-change='languageChangeEvent'
       />
 
       <input-result-content ref='translatedResultInput' />
@@ -55,6 +56,14 @@ window.api.clearAllTranslateContentEvent(() => {
   translatedResultInput.value.clearTranslatedResultContentEvent()
   translateInput.value.clearTranslatedContentEvent()
 })
+
+/**
+ * 切换翻译语言或功能事件 立即清空翻译结果并重新翻译
+ */
+const languageChangeEvent = (): void => {
+  translatedResultInput.value.clearTranslatedResultContentEvent()
+  translateInput.value.retranslateEvent()
+}
 
 // 输入翻译触发的窗口显示事件
 window.api.winShowByInputEvent(() => {

@@ -89,6 +89,9 @@ import { cacheGet, cacheSet } from '../../utils/cacheUtil'
 import LanguageEnum from '../../enums/LanguageEnum'
 import { OpenAIModelEnum } from '../../../../common/enums/OpenAIModelEnum'
 
+// 用户切换翻译语言或功能时触发 用于清空结果并重新翻译
+const emit = defineEmits(['language-change'])
+
 const languageAuto = {
   languageType: LanguageEnum.AUTO,
   languageName: '自动识别'
@@ -151,20 +154,32 @@ const clickSelectResultFun = (): void => {
   showLanguageResult.value = !showLanguageResult.value
 }
 
+const setInputLanguage = (language): void => {
+  cacheSet('inputLanguage', language)
+  inputLanguageSelect.value = language
+}
+
+const setResultLanguage = (language): void => {
+  cacheSet('resultLanguage', language)
+  resultLanguageSelect.value = language
+}
+
 /**
  * 输入 - 翻译语言选择点击事件
  */
-const inputLanguageSelectClick = (language: object): void => {
-  cacheSet('inputLanguage', language)
-  inputLanguageSelect.value = language
+const inputLanguageSelectClick = (language): void => {
+  if (isSameSelection(inputLanguageSelect.value, language)) return
+  setInputLanguage(language)
+  emit('language-change')
 }
 
 /**
  * 结果 - 翻译语言选择点击事件
  */
-const resultLanguageSelectClick = (language: object): void => {
-  cacheSet('resultLanguage', language)
-  resultLanguageSelect.value = language
+const resultLanguageSelectClick = (language): void => {
+  if (isSameSelection(resultLanguageSelect.value, language)) return
+  setResultLanguage(language)
+  emit('language-change')
 }
 
 /**
@@ -174,8 +189,10 @@ const clickLanguageExchange = (): void => {
   const inputLanguageSelect = cacheGet('inputLanguage')
   const resultLanguageSelect = cacheGet('resultLanguage')
   if (!isInputLanguage(resultLanguageSelect)) return
-  inputLanguageSelectClick(resultLanguageSelect)
-  resultLanguageSelectClick(inputLanguageSelect)
+  if (isSameSelection(inputLanguageSelect, resultLanguageSelect)) return
+  setInputLanguage(resultLanguageSelect)
+  setResultLanguage(inputLanguageSelect)
+  emit('language-change')
 }
 
 /**
@@ -184,10 +201,10 @@ const clickLanguageExchange = (): void => {
 const refreshLanguageOptions = (): void => {
   languageList.value = [languageAuto, ...initLanguageList()]
   customActions.value = getCustomResultActions()
-  inputLanguageSelectClick(
+  setInputLanguage(
     inputOptions.value.find((option) => isSameSelection(inputLanguageSelect.value, option)) ?? languageAuto
   )
-  resultLanguageSelectClick(
+  setResultLanguage(
     resultOptions.value.find((option) => isSameSelection(resultLanguageSelect.value, option)) ?? languageAuto
   )
 }
