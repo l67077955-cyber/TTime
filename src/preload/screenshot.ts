@@ -181,7 +181,7 @@ class Draw {
     this.$bgCanvasTemp = document.createElement('canvas')
     this.$bgCanvasTempCtx = this.$bgCanvasTemp.getContext('2d')
     // 新建一个图片，用来放进canvas存图片数据
-    const img = await new Promise((resolve) => {
+    const img = await new Promise<HTMLImageElement>((resolve) => {
       const img = new Image()
       img.src = this.screenImgUrl
       if (img.complete) {
@@ -191,17 +191,16 @@ class Draw {
       }
     })
     this.$bgCanvasTemp.style.backgroundSize = `cover`
-    this.$bgCanvasTemp.width = this.screenWidth
-    this.$bgCanvasTemp.height = this.screenHeight
-    // @ts-ignore 忽略校验
-    this.$bgCanvasTempCtx.drawImage(img, 0, 0, this.screenWidth, this.screenHeight)
-    // @ts-ignore 忽略校验
-    this.$bgCanvasTempCtx.backgroundSize = 'cover'
+    // 保留截图的物理像素；屏幕尺寸和鼠标坐标是逻辑像素。
+    this.$bgCanvasTemp.width = img.naturalWidth
+    this.$bgCanvasTemp.height = img.naturalHeight
+    this.$bgCanvasTempCtx?.drawImage(img, 0, 0)
   }
 
   // 开始按下，对应mousedown事件
   startRect(e): void {
     this.drawing = true
+    this.selectRectMeta.RGBAData = null
     // 鼠标按下的定点坐标
     this.selectRectMeta.startX = e.pageX
     this.selectRectMeta.startY = e.pageY
@@ -229,22 +228,49 @@ class Draw {
     this.$rectCanvasDOM.style.top = `${selectY}px`
     // 没有拉伸距离会报错
     if (!this.selectRectMeta.w || !this.selectRectMeta.h) {
+      this.selectRectMeta.RGBAData = null
       return
     }
-    if (null === this.$bgCanvasTempCtx) {
+    if (null === this.$bgCanvasTempCtx || !this.$bgCanvasTemp?.width) {
       return
     }
-    // 获取 矩形 坐标在整个 全屏 的位置，生成RGBAData传入回矩形选区
+    // 背景图铺满窗口，按实际图像与窗口尺寸分别换算横纵坐标。
+    const scaleX = this.$bgCanvasTemp.width / window.innerWidth
+    const scaleY = this.$bgCanvasTemp.height / window.innerHeight
+    const left = Math.max(0, Math.min(this.$bgCanvasTemp.width, Math.round(selectX * scaleX)))
+    const top = Math.max(0, Math.min(this.$bgCanvasTemp.height, Math.round(selectY * scaleY)))
+    const right = Math.max(
+      0,
+      Math.min(this.$bgCanvasTemp.width, Math.round((selectX + selectWidth) * scaleX))
+    )
+    const bottom = Math.max(
+      0,
+      Math.min(this.$bgCanvasTemp.height, Math.round((selectY + selectHeight) * scaleY))
+    )
+    if (right <= left || bottom <= top) {
+      this.selectRectMeta.RGBAData = null
+      return
+    }
     this.selectRectMeta.RGBAData = this.$bgCanvasTempCtx.getImageData(
-      selectX,
-      selectY,
-      Math.abs(this.selectRectMeta.w),
-      Math.abs(this.selectRectMeta.h)
+      left,
+      top,
+      right - left,
+      bottom - top
     )
     if (null === this.$rectCanvasCtx) {
       return
     }
-    this.$rectCanvasCtx.putImageData(this.selectRectMeta.RGBAData, 0, 0)
+    this.$rectCanvasCtx.drawImage(
+      this.$bgCanvasTemp,
+      left,
+      top,
+      right - left,
+      bottom - top,
+      0,
+      0,
+      selectWidth,
+      selectHeight
+    )
     // 设置填充颜色
     this.$rectCanvasCtx.fillStyle = '#0091ff30'
     this.$rectCanvasCtx.fillRect(0, 0, selectWidth, selectHeight)
@@ -287,6 +313,7 @@ class Draw {
     // 设置为绘图结束状态
     this.drawing = false
     // 转成base64图片
+    if (!this.selectRectMeta.RGBAData) return
     this.selectRectMeta.base64Data = this.RGBA2ImageData(this.selectRectMeta.RGBAData)
     this.done()
   }

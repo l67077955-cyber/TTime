@@ -1,6 +1,6 @@
 {
   "name": "time-translate",
-  "version": "0.9.10",
+  "version": "0.9.11",
   "description": "一款简洁、高效、高颜值的输入、截图、划词翻译软件",
   "main": "./out/main/index.js",
   "author": "byliangcheng",
@@ -16,6 +16,7 @@
     "dev:linux": "env -u ELECTRON_RUN_AS_NODE electron-vite dev --watch",
     "build": "electron-vite build",
     "test:renderer:linux": "npm run build && xvfb-run -a node scripts/renderer-smoke-linux.js",
+    "test:screenshot": "node tests/screenshot.test.cjs",
     "postinstall": "electron-builder install-app-deps",
     "build:win": "npm run modules-update && npm run build && electron-builder --win --publish never --config.directories.output=windows-exe",
     "build:win:portable": "npm run modules-update && npm run build && electron-builder --win portable --publish never",
