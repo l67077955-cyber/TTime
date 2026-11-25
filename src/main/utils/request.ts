@@ -1,8 +1,9 @@
-import axios from 'axios'
+import axios, { AxiosRequestConfig, AxiosResponse } from 'axios'
 import GlobalWin from '../service/GlobalWin'
 import { injectAgent } from './RequestUtil'
 import StoreService from '../service/StoreService'
 import { isNotNull, isNull } from '../../common/utils/validate'
+import { getTranslateRequestContext } from '../service/channel/TranslateRequestControl'
 
 const BASE_API = 'https://ink.timerecord.cn/apis/'
 
@@ -55,4 +56,23 @@ service.interceptors.response.use(
   }
 )
 
-export default service
+/**
+ * 发起请求
+ * 在翻译请求上下文中发起时 绑定中止信号并登记为进行中的请求 以便中止翻译时取消并等待其结束
+ *
+ * @param config 请求配置
+ */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function request<T = any, R = AxiosResponse<T>, D = any>(config: AxiosRequestConfig<D>): Promise<R> {
+  const context = getTranslateRequestContext()
+  if (!context) return service<T, R, D>(config)
+  const promise = service<T, R, D>({ ...config, signal: config.signal ?? context.controller.signal })
+  context.pending.add(promise)
+  const remove = (): void => {
+    context.pending.delete(promise)
+  }
+  promise.then(remove, remove)
+  return promise
+}
+
+export default request

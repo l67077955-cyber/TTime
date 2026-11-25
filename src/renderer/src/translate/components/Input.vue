@@ -64,7 +64,7 @@ import TranslateRecordVo from '../../../../common/class/TranslateRecordVo'
 import TranslateServiceRecordVo from '../../../../common/class/TranslateServiceRecordVo'
 import { StoreTypeEnum } from '../../../../common/enums/StoreTypeEnum'
 import { updateTranslateRecordList } from '../../utils/translateRecordUtil'
-import { setActiveTranslationRequest } from '../../channel/ChannelRequest'
+import { setActiveTranslationRequest, stopActiveTranslation } from '../../channel/ChannelRequest'
 import type { OpenAICustomAction } from '../../../../common/channel/translate/info/OpenAIInfo'
 
 // 加载loading
@@ -75,7 +75,9 @@ const isScreenshotEnd = ref(false)
 const translateContent = ref('')
 // 翻译输入框ref
 const translateContentInputRef = ref()
-const emit = defineEmits(['start-request-event'])
+const emit = defineEmits(['start-request-event', 'clear-result-event'])
+// 最近一次发起的翻译请求ID 用于判断等待上一次翻译停止期间是否又发起了新的翻译
+let latestRequestId: string | undefined
 
 watch(translateContent, () => {
   // 页面高度改变监听
@@ -158,7 +160,7 @@ const translateChange = (event: KeyboardEvent): void => {
 /**
  * 翻译
  */
-const translateFun = (): void => {
+const translateFun = async (): Promise<void> => {
   clearTimeout(translateContentInputTimeout)
   // 翻译内容
   let translateContentDealWith = translateContent.value
@@ -195,10 +197,6 @@ const translateFun = (): void => {
     const languageName = getLanguageResultNameConversion(translateContentDealWith)
     resultLanguage = findLanguageByLanguageName(languageName) ?? { languageName }
   }
-  // 应用翻译使用
-  window.api.ttimeApiTranslateUse()
-  // 获取当前正在使用的翻译源
-  const translateServiceMapData = getTranslateServiceMapByUse()
   // 构建翻译记录信息
   const translateRecordVo = TranslateRecordVo.build({
     translateContentDealWith,
@@ -206,8 +204,18 @@ const translateFun = (): void => {
     resultLanguage
   })
   const requestId = translateRecordVo.requestId
-  setActiveTranslationRequest(requestId)
+  latestRequestId = requestId
+  // 立即清空上一次的翻译结果
   emit('start-request-event', requestId, resultLanguage.serviceId)
+  // 等待上一次翻译完全停止后再开始本次翻译
+  await stopActiveTranslation()
+  // 等待期间又发起了新的翻译或被清空 本次翻译作废
+  if (latestRequestId !== requestId) return
+  setActiveTranslationRequest(requestId)
+  // 应用翻译使用
+  window.api.ttimeApiTranslateUse()
+  // 获取当前正在使用的翻译源
+  const translateServiceMapData = getTranslateServiceMapByUse()
   const requests = []
   // 遍历当前正在使用的翻译源
   for (const translateService of translateServiceMapData.values()) {
@@ -320,9 +328,21 @@ const translateContentPasteEvent = (): void => {
 }
 
 /**
+ * 中止翻译 包括待触发的输入自动翻译与进行中的翻译
+ */
+const cancelTranslate = (): void => {
+  clearTimeout(translateContentInputTimeout)
+  latestRequestId = undefined
+  stopActiveTranslation()
+}
+
+/**
  * 翻译内容输入事件
+ * 输入内容改变时立即清空翻译结果并停止上一次翻译
  */
 const translateContentInputEvent = (): void => {
+  cancelTranslate()
+  emit('clear-result-event')
   if (pasteTranslatePending) {
     pasteTranslatePending = false
     if (isContentNull(translateContent.value)) {
@@ -382,8 +402,7 @@ const setTranslateContent = (value): void => {
  * 清除翻译内容事件
  */
 const clearTranslatedContentEvent = (): void => {
-  clearTimeout(translateContentInputTimeout)
-  setActiveTranslationRequest()
+  cancelTranslate()
   setTranslateContent('')
 }
 
@@ -392,9 +411,8 @@ const clearTranslatedContentEvent = (): void => {
  * 输入框为空时只中止进行中的翻译
  */
 const retranslateEvent = (): void => {
-  clearTimeout(translateContentInputTimeout)
   if (isContentNull(translateContent.value)) {
-    setActiveTranslationRequest()
+    cancelTranslate()
     return
   }
   translateFun()

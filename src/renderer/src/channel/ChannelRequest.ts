@@ -7,13 +7,32 @@ import { BaiduChannelRequest } from './BaiduChannelRequest'
 import { TTimeAIChannelRequest } from './TTimeAIChannelRequest'
 import TranslateServiceEnum from '../../../common/enums/TranslateServiceEnum'
 
-let currentRequestId: string
-let currentStream: AbortController
+let currentRequestId: string | undefined
+let currentStream: AbortController | undefined
+// 进行中的翻译任务
+const pendingTasks = new Set<Promise<void>>()
+// 等待翻译任务结束的最长时间 避免个别请求无法响应中止信号时一直无法开始新的翻译
+const STOP_TIMEOUT = 5000
 
 export const setActiveTranslationRequest = (requestId?: string): void => {
   currentStream?.abort()
   currentRequestId = requestId
   currentStream = requestId ? new AbortController() : undefined
+}
+
+/**
+ * 中止当前翻译 并等待渲染进程与主进程中进行中的翻译请求全部结束
+ */
+export const stopActiveTranslation = async (): Promise<void> => {
+  setActiveTranslationRequest()
+  let timer: ReturnType<typeof setTimeout> | undefined
+  const timeout = new Promise<boolean>((resolve) => {
+    timer = setTimeout(() => resolve(true), STOP_TIMEOUT)
+  })
+  const stopped = Promise.allSettled([...pendingTasks, window.api.apiStopTranslate()]).then(() => false)
+  const timedOut = await Promise.race([stopped, timeout])
+  clearTimeout(timer)
+  if (timedOut) window.api.logInfoEvent('[翻译事件] - 等待上一次翻译结束超时')
 }
 
 class ChannelRequest {
@@ -22,8 +41,8 @@ class ChannelRequest {
    *
    * @param info 翻译信息
    */
-  static deeplTranslate = (info): void => {
-    DeepLChannelRequest.apiTranslateByDeepL(info)
+  static deeplTranslate = (info, signal?: AbortSignal): Promise<void> => {
+    return DeepLChannelRequest.apiTranslateByDeepL(info, signal)
   }
 
   /**
@@ -31,8 +50,8 @@ class ChannelRequest {
    *
    * @param info 翻译信息
    */
-  static deeplbuiltinTranslate = (info): void => {
-    DeepLChannelRequest.apiTranslateByDeepLBuiltIn(info)
+  static deeplbuiltinTranslate = (info, signal?: AbortSignal): Promise<void> => {
+    return DeepLChannelRequest.apiTranslateByDeepLBuiltIn(info, signal)
   }
 
   /**
@@ -40,8 +59,8 @@ class ChannelRequest {
    *
    * @param info 翻译信息
    */
-  static googleTranslate = (info): void => {
-    GoogleChannelRequest.apiTranslateByGoogle(info)
+  static googleTranslate = (info, signal?: AbortSignal): Promise<void> => {
+    return GoogleChannelRequest.apiTranslateByGoogle(info, signal)
   }
 
   /**
@@ -49,8 +68,8 @@ class ChannelRequest {
    *
    * @param info 翻译信息
    */
-  static googlebuiltinTranslate = (info): void => {
-    GoogleChannelRequest.apiTranslateByGoogleBuiltIn(info)
+  static googlebuiltinTranslate = (info, signal?: AbortSignal): Promise<void> => {
+    return GoogleChannelRequest.apiTranslateByGoogleBuiltIn(info, signal)
   }
 
   /**
@@ -93,8 +112,8 @@ class ChannelRequest {
    *
    * @param info 翻译信息
    */
-  static bingTranslate = (info): void => {
-    BingChannelRequest.apiTranslateByBing(info)
+  static bingTranslate = (info, signal?: AbortSignal): Promise<void> => {
+    return BingChannelRequest.apiTranslateByBing(info, signal)
   }
 
   /**
@@ -102,8 +121,8 @@ class ChannelRequest {
    *
    * @param info 翻译信息
    */
-  static bingdictTranslate = (info): void => {
-    BingChannelRequest.apiTranslateByBingDict(info)
+  static bingdictTranslate = (info, signal?: AbortSignal): Promise<void> => {
+    return BingChannelRequest.apiTranslateByBingDict(info, signal)
   }
 
   /**
@@ -122,22 +141,27 @@ class ChannelRequest {
  * @param type 翻译源类型
  * @param info 翻译源类型
  */
-window.api['agentApiTranslate'](async (info) => {
-  if (
-    !info.isTranslateCheckType &&
-    (info.type === TranslateServiceEnum.OPEN_AI ||
-      info.type === TranslateServiceEnum.AZURE_OPEN_AI ||
-      info.type === TranslateServiceEnum.TTIME_AI) &&
-    (!currentStream || info.requestId !== currentRequestId)
-  ) {
+window.api['agentApiTranslate']((info) => {
+  const translate = (signal?: AbortSignal): Promise<void> =>
+    Promise.resolve(ChannelRequest[info.type.toLowerCase() + 'Translate'](info, signal))
+  if (info.isTranslateCheckType) {
+    translate().catch((error) => window.api.logErrorEvent('翻译请求失败', error))
+    return
+  }
+  const isStream =
+    info.type === TranslateServiceEnum.OPEN_AI ||
+    info.type === TranslateServiceEnum.AZURE_OPEN_AI ||
+    info.type === TranslateServiceEnum.TTIME_AI
+  // 已被中止或已过期的翻译请求不再执行
+  if ((isStream && !currentStream) || (info.requestId && info.requestId !== currentRequestId)) {
     return
   }
   const signal = currentStream?.signal
-  try {
-    await ChannelRequest[info.type.toLowerCase() + 'Translate'](info, signal)
-  } catch (error) {
+  const task = translate(signal).catch((error) => {
     if (!signal?.aborted) window.api.logErrorEvent('翻译请求失败', error)
-  }
+  })
+  pendingTasks.add(task)
+  task.finally(() => pendingTasks.delete(task))
 })
 
 /**

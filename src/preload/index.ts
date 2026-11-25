@@ -226,6 +226,13 @@ const apiUniteTranslate = (type, info): void => {
 }
 
 /**
+ * 中止当前翻译 主进程中进行中的翻译请求全部结束后返回
+ */
+const apiStopTranslate = (): Promise<void> => {
+  return ipcRenderer.invoke('api-stop-translate')
+}
+
+/**
  * 应用启动
  */
 const ttimeApiAppStart = (): void => {
@@ -332,6 +339,7 @@ const api = {
   winShowEvent,
   winShowByInputEvent,
   apiUniteTranslate,
+  apiStopTranslate,
   ttimeApiAppStart,
   updateTranslateServiceEvent,
   updateTranslateServiceNotify,

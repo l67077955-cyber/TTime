@@ -16,6 +16,7 @@ declare global {
     winShowEvent
     winShowByInputEvent
     apiUniteTranslate
+    apiStopTranslate
     showMsgEvent
     updateTranslateServiceEvent
     updateTranslateServiceNotify

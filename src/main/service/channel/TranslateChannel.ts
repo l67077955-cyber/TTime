@@ -3,6 +3,7 @@ import GlobalWin from '../GlobalWin'
 import R from '../../../common/class/R'
 import TranslateChannelFactory from './factory/TranslateChannelFactory'
 import OcrChannelFactory from './factory/OcrChannelFactory'
+import { stopTranslateRequest } from './TranslateRequestControl'
 
 /**
  * 翻译
@@ -13,6 +14,11 @@ import OcrChannelFactory from './factory/OcrChannelFactory'
 ipcMain.handle('api-unite-translate', (_event, channel, info) => {
   TranslateChannelFactory.translate(channel, info)
 })
+
+/**
+ * 中止当前翻译 并在进行中的请求全部结束后返回
+ */
+ipcMain.handle('api-stop-translate', () => stopTranslateRequest())
 
 /**
  * 选择翻译校验

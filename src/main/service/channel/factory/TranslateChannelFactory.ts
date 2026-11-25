@@ -1,6 +1,7 @@
 import log from '../../../utils/log'
 import { paramsFilter } from '../../../utils/logExtend'
 import { isNotNull } from '../../../../common/utils/validate'
+import { runTranslateRequest } from '../TranslateRequestControl'
 
 // 获取所有翻译源模块
 const channelModules = import.meta.glob('../product/translate/*.ts')
@@ -54,7 +55,9 @@ class TranslateChannelFactory {
       paramsFilter(info)
     )
     info.type = type
-    TranslateChannelFactory.channels[type + 'Channel'].apiTranslate(info)
+    runTranslateRequest(info.requestId, () =>
+      TranslateChannelFactory.channels[type + 'Channel'].apiTranslate(info)
+    )
   }
 
   /**

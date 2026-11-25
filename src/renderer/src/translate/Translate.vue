@@ -5,6 +5,7 @@
       <Input
         ref='translateInput'
         @start-request-event='(requestId, serviceId) => translatedResultInput.startRequest(requestId, serviceId)'
+        @clear-result-event='translatedResultInput.clearTranslatedResultContentEvent()'
         v-show='!hideTranslateInput'
       />
 

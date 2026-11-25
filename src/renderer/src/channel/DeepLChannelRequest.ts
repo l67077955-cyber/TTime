@@ -12,7 +12,7 @@ class DeepLChannelRequest {
    *
    * @param info 翻译信息
    */
-  static apiTranslateByDeepL = (info): void => {
+  static apiTranslateByDeepL = (info, signal?: AbortSignal): Promise<void> => {
     const data = {
       text: info.translateContent.split('\n'),
       target_lang: info.languageResultType
@@ -29,11 +29,13 @@ class DeepLChannelRequest {
       },
       data
     }
-    request(requestInfo).then(
+    return request({ ...requestInfo, signal }).then(
       (data) => {
+        if (signal?.aborted) return
         window.api['agentApiTranslateCallback'](R.okD(new AgentTranslateCallbackVo(info, data)))
       },
       (err) => {
+        if (signal?.aborted) return
         window.api['agentApiTranslateCallback'](
           R.errorD(
             new AgentTranslateCallbackVo(info, commonError(TranslateServiceEnum.DEEP_L, err))
@@ -48,7 +50,7 @@ class DeepLChannelRequest {
    *
    * @param info 翻译信息
    */
-  static apiTranslateByDeepLBuiltIn = (info): void => {
+  static apiTranslateByDeepLBuiltIn = (info, signal?: AbortSignal): Promise<void> => {
     const content = info.translateContent
     const id = 1000 * (Math.floor(Math.random() * 99999) + 8300000) + 1
     let ts = Date.now()
@@ -90,19 +92,22 @@ class DeepLChannelRequest {
     } else {
       data = data.replace('"method":"', '"method": "')
     }
-    request({
+    return request({
       baseURL: 'https://www2.deepl.com',
       url: '/jsonrpc',
       method: HttpMethodType.POST,
       headers: {
         'Content-Type': 'application/json; charset=utf-8'
       },
-      data: data
+      data: data,
+      signal
     })
       .then((res) => {
+        if (signal?.aborted) return
         window.api['agentApiTranslateCallback'](R.okD(new AgentTranslateCallbackVo(info, res)))
       })
       .catch((error) => {
+        if (signal?.aborted) return
         window.api['agentApiTranslateCallback'](
           R.errorD(
             new AgentTranslateCallbackVo(

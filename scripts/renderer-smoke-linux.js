@@ -197,6 +197,22 @@ async function verify(port, config, sockets) {
   assert.equal(requests.length, 4, 'Enter should cancel the pending automatic submission')
   console.log('PASS  Enter replacement, concurrent sources and split <think> filtering')
 
+  await enter('first submission')
+  await waitFor('streams before editing', async () => (await output()) === '舊翻譯開頭|舊翻譯開頭')
+  const cancelledBeforeEdit = cancelled
+  await main(edit(input, 'edited text'))
+  // 结果被清空时结果框会被隐藏 只要没有任何结果文字即可
+  await waitFor('results cleared on input', async () => !(await output()).replaceAll('|', ''), 400)
+  await waitFor('older streams stopped on input', () => cancelled === cancelledBeforeEdit + 2)
+  const requestsBeforeRetranslate = requests.length
+  await waitFor(
+    'automatic retranslation after input',
+    async () => (await output()) === '新翻譯 first|新翻譯 second'
+  )
+  assert.equal(requests.length, requestsBeforeRetranslate + 2)
+  assert.match(requests.at(-1).prompt, /edited text/)
+  console.log('PASS  Input change clears results, stops older streams and retranslates')
+
   await main('window.api.openSetPageEvent()')
   const settings = await connectPage(port, 'set.html', sockets)
   await waitFor('settings UI', () => settings('Boolean(document.querySelector(".el-menu-item"))'))
@@ -225,12 +241,16 @@ async function verify(port, config, sockets) {
       '[...document.querySelectorAll(".language-name")].some((node) => node.textContent === "提取事實")'
     )
   )
+  const requestsBeforeAction = requests.length
   await main(clickText('a.language-block.function-tools', '提取事實'))
+  await waitFor('custom output after switching', async () => (await output()) === '自訂輸出 data: 保留')
+  assert.equal(requests.length, requestsBeforeAction + 1, 'Switching should retranslate on its own provider')
+  assert.match(requests.at(-1).prompt, /Extract facts from .+ text: edited text/)
   await enter('example source text')
+  await waitFor('custom output', async () => requests.length === requestsBeforeAction + 2)
   await waitFor('custom output', async () => (await output()) === '自訂輸出 data: 保留')
-  assert.equal(requests.length, 5, 'The custom action should run on its own provider')
-  assert.equal(requests[4].model, 'first')
-  assert.match(requests[4].prompt, /Extract facts from .+ text: example source text/)
+  assert.equal(requests.at(-1).model, 'first', 'The custom action should run on its own provider')
+  assert.match(requests.at(-1).prompt, /Extract facts from .+ text: example source text/)
   await enter('full response')
   await waitFor('non-stream response', async () => (await output()) === '完整結果')
   await settings(clickText('button', '编辑'))

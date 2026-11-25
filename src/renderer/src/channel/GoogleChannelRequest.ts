@@ -11,7 +11,7 @@ class GoogleChannelRequest {
    *
    * @param info 翻译信息
    */
-  static apiTranslateByGoogle = (info): void => {
+  static apiTranslateByGoogle = (info, signal?: AbortSignal): Promise<void> => {
     const requestInfo = {
       baseURL: 'https://translation.googleapis.com',
       url: '/language/translate/v2?key=' + info.appKey,
@@ -21,11 +21,13 @@ class GoogleChannelRequest {
         target: info.languageResultType
       }
     }
-    request(requestInfo).then(
+    return request({ ...requestInfo, signal }).then(
       (data) => {
+        if (signal?.aborted) return
         window.api['agentApiTranslateCallback'](R.okD(new AgentTranslateCallbackVo(info, data)))
       },
       (err) => {
+        if (signal?.aborted) return
         window.api['agentApiTranslateCallback'](
           R.errorD(
             new AgentTranslateCallbackVo(info, commonError(TranslateServiceEnum.GOOGLE, err))
@@ -40,7 +42,7 @@ class GoogleChannelRequest {
    *
    * @param info 翻译信息
    */
-  static apiTranslateByGoogleBuiltIn = (info): void => {
+  static apiTranslateByGoogleBuiltIn = (info, signal?: AbortSignal): Promise<void> => {
     const requestInfo = {
       baseURL: 'https://translate.google.com',
       // dt- 可以多次包含并指定在回复中返回的内容
@@ -61,11 +63,13 @@ class GoogleChannelRequest {
         q: info.translateContent
       }
     }
-    request(requestInfo).then(
+    return request({ ...requestInfo, signal }).then(
       (data) => {
+        if (signal?.aborted) return
         window.api['agentApiTranslateCallback'](R.okD(new AgentTranslateCallbackVo(info, data)))
       },
       (err) => {
+        if (signal?.aborted) return
         window.api['agentApiTranslateCallback'](
           R.errorD(
             new AgentTranslateCallbackVo(

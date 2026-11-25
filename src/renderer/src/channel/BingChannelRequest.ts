@@ -62,7 +62,7 @@ class BingChannelRequest {
    *
    * @param info 翻译信息
    */
-  static apiTranslateByBingRequest = async (info): Promise<AxiosPromise> => {
+  static apiTranslateByBingRequest = async (info, signal?: AbortSignal): Promise<AxiosPromise> => {
     if (info.languageType === 'auto') {
       info.languageType = ''
     }
@@ -80,7 +80,8 @@ class BingChannelRequest {
         'api-version': '3.0',
         includeSentenceLength: true
       },
-      data: [{ Text: info.translateContent }]
+      data: [{ Text: info.translateContent }],
+      signal
     })
   }
 
@@ -89,12 +90,14 @@ class BingChannelRequest {
    *
    * @param info 翻译信息
    */
-  static apiTranslateByBing = (info): void => {
-    BingChannelRequest.apiTranslateByBingRequest(info).then(
+  static apiTranslateByBing = (info, signal?: AbortSignal): Promise<void> => {
+    return BingChannelRequest.apiTranslateByBingRequest(info, signal).then(
       (data) => {
+        if (signal?.aborted) return
         window.api['agentApiTranslateCallback'](R.okD(new AgentTranslateCallbackVo(info, data)))
       },
       (err) => {
+        if (signal?.aborted) return
         window.api['agentApiTranslateCallback'](
           R.errorD(new AgentTranslateCallbackVo(info, commonError(TranslateServiceEnum.BING, err)))
         )
@@ -107,11 +110,12 @@ class BingChannelRequest {
    *
    * @param info 翻译信息
    */
-  static apiTranslateByBingDict = (info): void => {
+  static apiTranslateByBingDict = (info, signal?: AbortSignal): Promise<void> => {
     // 这里调用bing的翻译接口进行查询结果 因为bing字典有些词或句子查不出
     // 这里作补充作用
-    BingChannelRequest.apiTranslateByBingRequest(info)
+    return BingChannelRequest.apiTranslateByBingRequest(info, signal)
       .then((bingRes) => {
+        if (signal?.aborted) return
         window.api.logInfoEvent('[Bing翻译事件] - 响应报文：', JSON.stringify(bingRes))
         window.api['agentApiTranslateCallback'](
           R.okD(
@@ -123,6 +127,7 @@ class BingChannelRequest {
         )
       })
       .catch((err) => {
+        if (signal?.aborted) return
         window.api.logInfoEvent('[Bing翻译事件] - 异常：', err)
         window.api['agentApiTranslateCallback'](
           R.errorD(new AgentTranslateCallbackVo(info, commonError('Bing翻译事件', err)))
